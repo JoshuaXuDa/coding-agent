@@ -1,1 +1,35 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Debug files
+*.pdb
+
+# Backup files
+*.bak
+
+# Samples
 samples/
+
+# Session and runtime data
+sessions/
+
+# Environment files
+.env
+.env.local
+
+# Claude Code specific
+.claude/projects/
+.claude/memory/
+
+# OS specific
+Thumbs.db
+.DS_Store
