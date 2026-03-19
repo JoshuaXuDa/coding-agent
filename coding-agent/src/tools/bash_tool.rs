@@ -2,15 +2,16 @@
 //!
 //! Provides shell command execution with safety limits:
 //! - 30 second timeout
-/// - 50KB output limit
+//! - 50KB output limit
 //! - Command history recording
 
 use std::process::Command;
 use std::time::Duration;
-use tirea::{Tool, ToolDescriptor};
-use tirea_contract::{tool::{ToolArgs, ToolContext, ToolExecutionEffect}, ToolError, Value};
+use tirea::prelude::{Tool, ToolDescriptor, ToolError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use crate::tools::{ToolArgs, ToolContext, ToolExecutionEffect};
 
 /// Default timeout for commands (30 seconds)
 const DEFAULT_TIMEOUT_MS: u64 = 30000;
@@ -85,7 +86,7 @@ impl Tool for BashTool {
 
         output.push_str(&format!("\nExit code: {:?}\n", result.exit_code));
 
-        Ok(ToolExecutionEffect::simple_text(output))
+        Ok(output)
     }
 }
 

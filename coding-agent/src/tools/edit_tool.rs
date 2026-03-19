@@ -8,10 +8,11 @@
 //! IMPORTANT: You MUST read the file first before using edit.
 
 use std::path::Path;
-use tirea::{Tool, ToolDescriptor};
-use tirea_contract::{tool::{ToolArgs, ToolContext, ToolExecutionEffect}, ToolError, Value};
+use tirea::prelude::{Tool, ToolDescriptor, ToolError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use crate::tools::{ToolArgs, ToolContext, ToolExecutionEffect};
 
 /// EditTool - String replacement tool
 #[derive(Debug, Clone)]
@@ -68,7 +69,7 @@ impl Tool for EditTool {
             params.replace_all,
         )?;
 
-        Ok(ToolExecutionEffect::simple_text(result))
+        Ok(result)
     }
 }
 

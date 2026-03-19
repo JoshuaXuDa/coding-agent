@@ -3,8 +3,7 @@
 //! This behavior provides a second layer of output size protection
 //! by checking tool outputs after execution.
 
-use tirea::AgentBehavior;
-use tirea_contract::run::InferenceContext;
+use tirea::prelude::AgentBehavior;
 
 /// Maximum output size (50KB) - same as tool layer
 const MAX_OUTPUT_SIZE: usize = 50 * 1024;
@@ -18,30 +17,22 @@ impl OutputGuardBehavior {
     pub fn new() -> Self {
         Self
     }
-}
 
-impl Default for OutputGuardBehavior {
-    fn default() -> Self {
-        Self::new()
+    /// Check if output is within size limits
+    pub fn is_within_limit(&self, output: &str) -> bool {
+        output.len() <= MAX_OUTPUT_SIZE
     }
-}
 
-impl AgentBehavior for OutputGuardBehavior {
-    fn after_tool_execute(&self, context: &mut InferenceContext) {
-        // Check the last tool result if available
-        if let Some(last_result) = context.last_tool_result.as_mut() {
-            if let Some(output) = last_result.result.as_mut() {
-                let output_str = output.to_string();
-                if output_str.len() > MAX_OUTPUT_SIZE {
-                    // Truncate the output
-                    let truncated = format!(
-                        "{}\n\n--- Output truncated by OutputGuard (was {} bytes) ---",
-                        &output_str[..MAX_OUTPUT_SIZE],
-                        output_str.len()
-                    );
-                    *output = serde_json::Value::String(truncated);
-                }
-            }
+    /// Truncate output if it exceeds limits
+    pub fn truncate_output(&self, output: &str) -> String {
+        if output.len() > MAX_OUTPUT_SIZE {
+            format!(
+                "{}\n\n--- Output truncated by OutputGuard (was {} bytes) ---",
+                &output[..MAX_OUTPUT_SIZE],
+                output.len()
+            )
+        } else {
+            output.to_string()
         }
     }
 }

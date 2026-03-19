@@ -6,10 +6,11 @@
 use std::path::Path;
 use std::fs::File;
 use std::io::BufRead;
-use tirea::{Tool, ToolDescriptor};
-use tirea_contract::{tool::{ToolArgs, ToolContext, ToolExecutionEffect}, ToolError, Value};
+use tirea::prelude::{Tool, ToolDescriptor, ToolError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use crate::tools::{ToolArgs, ToolContext, ToolExecutionEffect};
 
 /// GrepTool - Content search using regular expressions
 #[derive(Debug, Clone)]
@@ -55,7 +56,7 @@ impl Tool for GrepTool {
             output
         };
 
-        Ok(ToolExecutionEffect::simple_text(result_text))
+        Ok(result_text)
     }
 }
 

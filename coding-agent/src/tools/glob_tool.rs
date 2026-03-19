@@ -4,10 +4,11 @@
 //! Results are sorted by modification time and limited to 100 files.
 
 use std::path::Path;
-use tirea::{Tool, ToolDescriptor};
-use tirea_contract::{tool::{ToolArgs, ToolContext, ToolExecutionEffect}, ToolError, Value};
+use tirea::prelude::{Tool, ToolDescriptor, ToolError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use crate::tools::{ToolArgs, ToolContext, ToolExecutionEffect};
 
 /// Maximum number of results to return
 const MAX_RESULTS: usize = 100;
@@ -60,7 +61,7 @@ impl Tool for GlobTool {
             output
         };
 
-        Ok(ToolExecutionEffect::simple_text(result_text))
+        Ok(result_text)
     }
 }
 

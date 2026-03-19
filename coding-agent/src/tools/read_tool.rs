@@ -6,10 +6,11 @@
 use std::path::Path;
 use std::fs::File;
 use std::io::BufRead;
-use tirea::{Tool, ToolDescriptor};
-use tirea_contract::{tool::{ToolArgs, ToolContext, ToolExecutionEffect}, ToolError, Value};
+use tirea::prelude::{Tool, ToolDescriptor, ToolError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use crate::tools::{ToolArgs, ToolContext, ToolExecutionEffect};
 
 /// Maximum lines to read without offset/limit
 const MAX_DEFAULT_LINES: usize = 2000;
@@ -56,7 +57,7 @@ impl Tool for ReadTool {
             params.limit,
         )?;
 
-        Ok(ToolExecutionEffect::simple_text(content))
+        Ok(content)
     }
 }
 

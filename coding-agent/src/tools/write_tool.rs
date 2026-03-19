@@ -4,10 +4,11 @@
 //! Ensures parent directory exists before writing.
 
 use std::path::Path;
-use tirea::{Tool, ToolDescriptor};
-use tirea_contract::{tool::{ToolArgs, ToolContext, ToolExecutionEffect}, ToolError, Value};
+use tirea::prelude::{Tool, ToolDescriptor, ToolError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use crate::tools::{ToolArgs, ToolContext, ToolExecutionEffect};
 
 /// WriteTool - File writing tool
 #[derive(Debug, Clone)]
@@ -47,11 +48,11 @@ impl Tool for WriteTool {
 
         write_file(&params.file_path, &params.content)?;
 
-        Ok(ToolExecutionEffect::simple_text(format!(
+        Ok(format!(
             "Successfully wrote {} bytes to {}",
             params.content.len(),
             params.file_path
-        )))
+        ))
     }
 }
 

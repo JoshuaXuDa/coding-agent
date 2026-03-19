@@ -4,7 +4,6 @@
 //! following DDD patterns with clear aggregate boundaries.
 
 use serde::{Deserialize, Serialize};
-use tirea::State;
 
 /// Aggregate root for the CodingAgent state
 ///
@@ -12,8 +11,7 @@ use tirea::State;
 /// - Current working directory context
 /// - TodoList for task tracking
 /// - Command execution history (bounded to 20 entries)
-#[derive(Debug, Clone, Default, Serialize, Deserialize, State)]
-#[tirea(action = "crate::state::CodingAction")]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CodingState {
     /// Current working directory for the agent
     pub working_dir: Option<String>,

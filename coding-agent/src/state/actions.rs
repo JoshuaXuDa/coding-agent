@@ -4,14 +4,12 @@
 //! Each action is processed by the reduce function to produce a new state.
 
 use crate::state::{CodingState, TodoItem, TodoStatus, CommandRecord};
-use tirea::{AnyStateAction, StateAction};
 
 /// Domain actions that can transition the CodingState
 ///
 /// Each variant represents a business intent that will cause
 /// a state transition when processed by the reduce function.
-#[derive(Debug, Clone, StateAction)]
-#[tirea(state_type = "CodingState")]
+#[derive(Debug, Clone)]
 pub enum CodingAction {
     /// Set or update the working directory
     SetWorkingDir(String),

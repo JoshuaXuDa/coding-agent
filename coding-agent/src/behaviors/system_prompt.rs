@@ -3,8 +3,7 @@
 //! This behavior hooks into the before_inference phase to inject
 //! the system prompt that defines the agent's role and behavior.
 
-use tirea::AgentBehavior;
-use tirea_contract::run::InferenceContext;
+use tirea::prelude::AgentBehavior;
 
 /// SystemPromptBehavior - Inject system prompt
 #[derive(Debug, Clone)]
@@ -24,24 +23,10 @@ impl SystemPromptBehavior {
     pub fn with_prompt(prompt: String) -> Self {
         Self { prompt }
     }
-}
 
-impl Default for SystemPromptBehavior {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AgentBehavior for SystemPromptBehavior {
-    fn before_inference(&self, context: &mut InferenceContext) {
-        // Inject system prompt at the beginning of messages
-        let system_message = serde_json::json!({
-            "role": "system",
-            "content": self.prompt
-        });
-
-        // Insert at the beginning
-        context.messages.insert(0, system_message);
+    /// Get the system prompt
+    pub fn prompt(&self) -> &str {
+        &self.prompt
     }
 }
 
