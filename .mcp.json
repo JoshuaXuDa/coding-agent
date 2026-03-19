@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tavily-mcp": {
+      "type": "streamable_http",
+      "url": "https://mcp.api-inference.modelscope.net/337251e06e654e/mcp"
+    }
+  }
+}
