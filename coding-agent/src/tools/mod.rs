@@ -44,7 +44,7 @@ impl Tool for SimpleTool {
         _context: &'life1 ToolCallContext<'life2>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ToolResult, ToolError>> + Send + 'async_trait>> {
         Box::pin(async move {
-            Ok(ToolResult::text("Tool executed"))
+            Ok(ToolResult::success("simple_tool", "Tool executed"))
         })
     }
 }
