@@ -20,7 +20,16 @@
       "Bash(sh -s -- -y)",
       "Bash(source \"$HOME/.cargo/env\")",
       "Bash(cargo doc:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(mkdir -p ~/.ssh)",
+      "Bash(ssh-keyscan github.com)",
+      "Bash(~/.ssh/known_hosts)",
+      "Bash(gh auth:*)",
+      "Bash(git rm:*)",
+      "Bash(chmod:*)",
+      "Bash(./run.sh)",
+      "Bash(ls -la *.sh)",
+      "Bash(timeout 5 ./coding-agent/run.sh)"
     ]
   }
 }
