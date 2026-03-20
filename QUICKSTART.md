@@ -16,12 +16,6 @@ cp .env.example .env
 ## 第二步：运行项目
 
 ```bash
-# 使用启动脚本（推荐）
-./run.sh
-```
-
-或者手动运行：
-```bash
 # 加载环境变量
 source .env
 

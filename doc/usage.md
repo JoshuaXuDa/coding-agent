@@ -24,14 +24,11 @@ ANTHROPIC_API_KEY=sk-ant-your-actual-api-key-here
 
 ### 2. 运行项目
 
-**使用启动脚本（推荐）**
 ```bash
-./run.sh
-```
-
-**手动运行**
-```bash
+# 加载环境变量
 source .env
+
+# 运行项目
 cargo run
 ```
 
