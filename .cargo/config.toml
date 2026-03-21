@@ -18,3 +18,8 @@ index = "https://rsproxy.cn/crates.io-index"
 
 [env]
 CARGO_REGISTRIES_CRATES_IO_PROTOCOL = "sparse"
+# GLM-4 API Configuration (BigModel.cn)
+# The endpoint is configured in client_resolver.rs
+AGENT_MODEL = "glm-4.7"
+# API KEY: Use environment variable (DO NOT put here - it will be committed!)
+# Run: export OPENAI_API_KEY=your-key && cargo run

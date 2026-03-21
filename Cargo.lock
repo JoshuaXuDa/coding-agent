@@ -233,7 +233,10 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "dotenv",
  "env_logger",
+ "futures",
+ "genai",
  "glob",
  "indoc",
  "regex",
@@ -243,7 +246,7 @@ dependencies = [
  "tempfile",
  "tirea",
  "tirea-agent-loop",
- "tirea-contract 0.4.0",
+ "tirea-contract",
  "tirea-extension-permission",
  "tokio",
  "walkdir",
@@ -441,6 +444,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "dotenv"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
 
 [[package]]
 name = "dunce"
@@ -901,7 +910,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots",
 ]
 
 [[package]]
@@ -1705,21 +1713,16 @@ dependencies = [
  "http-body",
  "http-body-util",
  "hyper",
- "hyper-rustls",
  "hyper-util",
  "js-sys",
  "log",
  "percent-encoding",
  "pin-project-lite",
- "quinn",
- "rustls",
- "rustls-pki-types",
  "serde",
  "serde_json",
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
- "tokio-rustls",
  "tower",
  "tower-http",
  "tower-service",
@@ -1727,7 +1730,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webpki-roots",
 ]
 
 [[package]]
@@ -1823,7 +1825,6 @@ checksum = "758025cb5fccfd3bc2fd74708fd4682be41d99e5dff73c377c0646c6012c73a4"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
- "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
@@ -2387,17 +2388,18 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tirea"
-version = "0.4.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "015528bb819bcf8de173513e18493371ab5ac70a1d901db4a9dd31e198e8edda"
+checksum = "5856014cb3e2707e0731d8aef94c0ffa95fe408ac72bc7abc0302eca2e4783fe"
 dependencies = [
  "async-trait",
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "tirea-agent-loop",
  "tirea-agentos",
- "tirea-contract 0.4.0",
- "tirea-state 0.4.0",
+ "tirea-contract",
+ "tirea-state",
 ]
 
 [[package]]
@@ -2414,8 +2416,8 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tirea-contract 0.3.0",
- "tirea-state 0.3.0",
+ "tirea-contract",
+ "tirea-state",
  "tokio",
  "tokio-util",
  "tracing",
@@ -2424,29 +2426,26 @@ dependencies = [
 
 [[package]]
 name = "tirea-agentos"
-version = "0.4.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "005d32e3dde500b33c18169eeeded509782e5deb55b36f2ad81c619be7bfeaa9"
+checksum = "387ce0047653c09aff4f14b8fefeaabb52a0c60009b86f414fb366772d747b17"
 dependencies = [
- "async-stream",
  "async-trait",
  "bytes",
  "futures",
  "genai",
- "json-patch",
- "reqwest 0.12.28",
  "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tirea-contract 0.4.0",
+ "tirea-agent-loop",
+ "tirea-contract",
  "tirea-extension-observability",
  "tirea-extension-permission",
  "tirea-extension-reminder",
  "tirea-extension-skills",
- "tirea-state 0.4.0",
+ "tirea-state",
  "tokio",
- "tokio-util",
  "tracing",
  "uuid",
 ]
@@ -2464,26 +2463,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tirea-state 0.3.0",
- "tokio-util",
- "unicode-normalization",
- "uuid",
-]
-
-[[package]]
-name = "tirea-contract"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9c9fd5692be48b42ffa62d1da4e1db922b384ffd5484c5f3a45e47199776ab0"
-dependencies = [
- "async-trait",
- "futures",
- "jsonschema",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tirea-state 0.4.0",
+ "tirea-state",
  "tokio-util",
  "unicode-normalization",
  "uuid",
@@ -2491,50 +2471,50 @@ dependencies = [
 
 [[package]]
 name = "tirea-extension-observability"
-version = "0.4.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77052b3e20920be90166df54dde9f4173916455d3104340af20af82e9a26392b"
+checksum = "5c65b65dca4871e192f7e9f5e7f05d3e3a167f441987060b78131c9f9e3361c2"
 dependencies = [
  "async-trait",
  "genai",
  "serde",
  "serde_json",
- "tirea-contract 0.4.0",
- "tirea-state 0.4.0",
+ "tirea-contract",
+ "tirea-state",
  "tracing",
 ]
 
 [[package]]
 name = "tirea-extension-permission"
-version = "0.4.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91953192a4058c86a00171383a31ce0b2654a9c9114cdb1efbb5ecdb2b29cbfa"
+checksum = "b72d5a64765d11e10b6589e092da5eed1f22563e77dad6e251826f747bf699dc"
 dependencies = [
  "async-trait",
  "serde",
  "serde_json",
- "tirea-contract 0.4.0",
- "tirea-state 0.4.0",
+ "tirea-contract",
+ "tirea-state",
 ]
 
 [[package]]
 name = "tirea-extension-reminder"
-version = "0.4.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8e506fa691853fe36c5c5beedcfff6306599736990c4d9aac1d27e09db94946"
+checksum = "0b68f5cf53869604119d8117e04896e1071d4c55158e47b7674db8180dd2936f"
 dependencies = [
  "async-trait",
  "serde",
  "serde_json",
- "tirea-contract 0.4.0",
- "tirea-state 0.4.0",
+ "tirea-contract",
+ "tirea-state",
 ]
 
 [[package]]
 name = "tirea-extension-skills"
-version = "0.4.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4344b53d7d059446c89b93adecffe2171b25c1c8b2ce9e3d9a27031c11939b74"
+checksum = "4ca139db40c5d8a1bddbf80e22e77b9602bc6b22551d09e2e72083c779cb5c2f"
 dependencies = [
  "async-trait",
  "base64",
@@ -2543,9 +2523,9 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "thiserror 2.0.18",
- "tirea-contract 0.4.0",
+ "tirea-contract",
  "tirea-extension-permission",
- "tirea-state 0.4.0",
+ "tirea-state",
  "tokio",
  "tracing",
  "unicode-normalization",
@@ -2560,20 +2540,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tirea-state-derive 0.3.0",
- "tokio",
-]
-
-[[package]]
-name = "tirea-state"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "609650b463d058f9cf72c61d78a2f1e9a2debbde8d99bb6f8a1dd92c831d6687"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tirea-state-derive 0.4.0",
+ "tirea-state-derive",
  "tokio",
 ]
 
@@ -2582,18 +2549,6 @@ name = "tirea-state-derive"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "167e490c231a82b2a9939a03c8617e09bb347013ab962651bf18ae8f4f0a0044"
-dependencies = [
- "darling 0.20.11",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "tirea-state-derive"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bce1fa12ba73344c9af9d0821f7c6788ca3954028c324b956f5bea50d72641a8"
 dependencies = [
  "darling 0.20.11",
  "proc-macro2",
@@ -3038,15 +2993,6 @@ name = "webpki-root-certs"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "804f18a4ac2676ffb4e8b5b5fa9ae38af06df08162314f96a68d2a363e21a8ca"
-dependencies = [
- "rustls-pki-types",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "1.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22cfaf3c063993ff62e73cb4311efde4db1efb31ab78a3e5c457939ad5cc0bed"
 dependencies = [
  "rustls-pki-types",
 ]
