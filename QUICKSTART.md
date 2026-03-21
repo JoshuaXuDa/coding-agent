@@ -1,68 +1,72 @@
-# 🚀 CodingAgent 快速开始
+# GLM-4 快速启动指南
 
-## 第一步：配置 API 密钥
+## 问题：为什么 Model 还是 `claude-sonnet-4-6`？
+
+你的系统中已经设置了 `AGENT_MODEL=claude-sonnet-4-6` 环境变量，它会覆盖 `.cargo/config.toml` 的设置。
+
+## 解决方案：使用启动脚本
+
+我们创建了 `run-glm4.sh` 脚本来确保正确的配置。
+
+### 方法 1：直接运行（推荐）
 
 ```bash
-# 1. 复制配置模板
-cp .env.example .env
-
-# 2. 编辑 .env 文件，修改这一行：
-# ANTHROPIC_API_KEY=sk-ant-your-actual-api-key-here
-# 改为你的实际 API Key
+./run-glm4.sh 你的API密钥
 ```
 
-**获取 API Key:** https://console.anthropic.com/settings/keys
-
-## 第二步：运行项目
+### 方法 2：设置后运行
 
 ```bash
-# 加载环境变量
-source .env
+# 1. 设置 API key（一次性，保存到 ~/.bashrc）
+echo 'export GLM4_API_KEY="你的API密钥"' >> ~/.bashrc
+source ~/.bashrc
 
-# 运行项目
+# 2. 运行
+./run-glm4.sh
+```
+
+### 方法 3：手动设置环境变量
+
+```bash
+export OPENAI_API_KEY="你的API密钥"
+export AGENT_MODEL="glm-4.7"
 cargo run
 ```
 
-## 📝 使用示例
+> **注意**：不要设置 `OPENAI_BASE_URL`！代码会自动使用正确的 BigModel Coding endpoint。
 
-启动后，你可以输入命令：
+## 验证配置
+
+运行后应该看到：
 
 ```
-You> 列出当前目录的文件
-You> 读取 README.md 文件
-You> 在 src/main.rs 中搜索 "println"
+🤖 CodingAgent starting...
+📦 Model: glm-4.7         ✅ 正确！
+📁 Session directory: ./sessions
+
+✅ Registered 6 tools:
+   - bash
+   - edit
+   - glob
+   - grep
+   - read
+   - write
 ```
 
-## 🛠️ 可用工具
+## 获取 API Key
 
-- **bash** - 执行 shell 命令
-- **read** - 读取文件内容
-- **write** - 写入文件
-- **glob** - 查找文件（支持模式匹配）
-- **grep** - 在文件中搜索内容
-- **edit** - 替换文件中的文本
+访问 [BigModel.cn](https://open.bigmodel.cn/) 获取你的 API key。
 
-## 🔧 配置选项
+## 故障排除
 
-在 `.env` 文件中可以配置：
+**问题**：Model 还是 `claude-sonnet-4-6`
+- **解决**：确保设置了 `AGENT_MODEL=glm-4.7` 环境变量
 
-```bash
-# 选择模型
-AGENT_MODEL=claude-sonnet-4-6        # 推荐
-# AGENT_MODEL=claude-opus-4-6        # 最强
-# AGENT_MODEL=claude-haiku-4-5-20251001  # 最快
+**问题**：提示 "API key not set"
+- **解决**：检查 API key 是否正确设置，运行 `echo $OPENAI_API_KEY` 查看
 
-# 会话配置
-MAX_ROUNDS=50                        # 最大对话轮数
-SESSION_DIR=./sessions               # 会话存储目录
-```
+**问题**：认证失败
+- **解决**：确认 API key 来自 BigModel.cn 且有效
 
-## ❓ 遇到问题？
-
-- **API 密钥错误** → 检查 `.env` 文件中的 `ANTHROPIC_API_KEY`
-- **编译失败** → 确保使用新的 Rust：`source "$HOME/.cargo/env"`
-- **网络问题** → 已配置国内镜像，应该很快
-
-## 📚 更多信息
-
-详细配置请查看：[SETUP.md](SETUP.md)
+**问题**：余额不足或无可用资源包
+- **解决**：在 [BigModel.cn](https://open.bigmodel.cn/) 充值或购买资源包

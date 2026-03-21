@@ -1,151 +1,129 @@
-# CodingAgent 配置指南
+# GLM-4 API 配置指南
 
-## 快速开始
+本指南介绍如何配置 coding-agent 使用智谱AI (BigModel.cn) 的 GLM-4 API。
 
-### 1. 配置 API 密钥
+## ⚠️ 安全提醒
+
+**绝对不要**将 API key 直接写在 `.cargo/config.toml` 中，那样会被提交到 git 仓库！
+
+请使用以下安全方式之一。
+
+## 获取 API Key
+
+1. 访问 [BigModel.cn](https://open.bigmodel.cn/)
+2. 登录你的账号
+3. 进入 API Keys 页面
+4. 创建新的 API key
+
+## 推荐配置方式
+
+### 方式 1：.env.local 文件（最推荐）
+
+1. 编辑项目根目录下的 `.env.local` 文件：
+   ```bash
+   OPENAI_API_KEY="你的实际API密钥"
+   ```
+
+2. 运行前加载环境变量：
+   ```bash
+   source .env.local
+   cargo run
+   ```
+
+### 方式 2：一次性设置环境变量
 
 ```bash
-# 复制配置模板
-cp .env.example .env
-
-# 编辑 .env 文件，设置你的 API 密钥
-nano .env  # 或使用你喜欢的编辑器
-```
-
-在 `.env` 文件中设置：
-```bash
-ANTHROPIC_API_KEY=sk-ant-your-actual-api-key-here
-```
-
-**获取 API Key:**
-1. 访问 [Anthropic Console](https://console.anthropic.com/settings/keys)
-2. 创建新的 API 密钥
-3. 复制密钥到 `.env` 文件
-
-### 2. 运行项目
-
-**方式1：使用启动脚本（推荐）**
-```bash
-./run.sh
-```
-
-**方式2：手动设置环境变量**
-```bash
-# 加载环境变量
-source .env
-
-# 加载 Rust 环境（如果使用 rustup）
-source "$HOME/.cargo/env"
-
-# 运行项目
+export OPENAI_API_KEY="你的实际API密钥"
 cargo run
 ```
 
-**方式3：直接设置环境变量**
+### 方式 3：添加到 shell profile
+
+将以下内容添加到 `~/.bashrc` 或 `~/.zshrc`：
+
 ```bash
-export ANTHROPIC_API_KEY="your-api-key"
-export AGENT_MODEL="claude-sonnet-4-6"
-cargo run
+# GLM-4 API Configuration (BigModel.cn)
+export OPENAI_API_KEY="你的实际API密钥"
 ```
 
-## 配置说明
-
-### 环境变量
-
-| 变量名 | 说明 | 默认值 | 必填 |
-|--------|------|--------|------|
-| `ANTHROPIC_API_KEY` | Anthropic API 密钥 | - | ✅ |
-| `AGENT_MODEL` | 使用的模型 | `claude-sonnet-4-6` | ❌ |
-| `MAX_ROUNDS` | 最大推理轮数 | `50` | ❌ |
-| `SESSION_DIR` | 会话存储目录 | `./sessions` | ❌ |
-| `RUST_LOG` | 日志级别 | - | ❌ |
-
-### 可用模型
-
-- `claude-sonnet-4-6` - 默认，平衡性能和速度
-- `claude-opus-4-6` - 最强性能，速度较慢
-- `claude-haiku-4-5-20251001` - 最快速度，性能略低
-
-### 日志调试
-
-启用详细日志：
+然后重新加载：
 ```bash
-# 在 .env 中添加
-RUST_LOG=debug
-
-# 或运行时设置
-RUST_LOG=debug cargo run
+source ~/.bashrc   # 或 source ~/.zshrc
 ```
 
-## 项目结构
+## 验证配置
+
+设置完成后，运行 `cargo run` 应该会看到：
 
 ```
-coding-agent/
-├── coding-agent/          # 主要源代码
-│   ├── src/
-│   │   ├── main.rs       # 入口文件
-│   │   ├── tools/        # 工具实现
-│   │   ├── state/        # 状态管理
-│   │   └── behaviors/    # 行为定义
-│   └── Cargo.toml        # Rust 依赖配置
-├── .env                   # 环境变量配置（不提交）
-├── .env.example           # 配置模板
-├── run.sh                 # 启动脚本
-└── SETUP.md              # 本文档
+🤖 CodingAgent starting...
+📦 Model: glm-4.7
+🌐 Base URL: https://open.bigmodel.cn/api/paas/v4
+📁 Session directory: ./sessions
+
+✅ Registered 6 tools:
+   - bash
+   - edit
+   - glob
+   - grep
+   - read
+   - write
 ```
 
-## 常见问题
+## 切换不同 API
 
-### Q: 提示 "ANTHROPIC_API_KEY not set"
-**A:** 请确保 `.env` 文件存在且包含有效的 API 密钥。
-
-### Q: 编译失败或版本错误
-**A:** 确保 Rust 版本 >= 1.82.0：
 ```bash
-rustc --version
-source "$HOME/.cargo/env"
-cargo build
+# 使用 GLM-4
+export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
+export AGENT_MODEL="glm-4.7"
+
+# 使用 OpenAI
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+export AGENT_MODEL="gpt-4"
+
+# 使用 DeepSeek
+export OPENAI_BASE_URL="https://api.deepseek.com"
+export AGENT_MODEL="deepseek-chat"
 ```
 
-### Q: 网络超时或下载慢
-**A:** 已配置国内镜像（rsproxy.cn），如仍有问题检查网络连接。
+## GLM-4 模型选项
 
-### Q: 如何更换模型？
-**A:** 在 `.env` 文件中修改 `AGENT_MODEL` 变量。
+- `glm-4.7` - 最新 GLM-4.7 模型（推荐）
+- `glm-4` - 标准 GLM-4 模型
+- `glm-4-flash` - 更快响应的模型
+- `glm-4-plus` - 增强能力模型
 
-## 开发说明
+## API 规格说明
 
-### 编译项目
-```bash
-cargo build
-```
+GLM-4 API 使用 OpenAI 兼容格式：
 
-### 运行测试
-```bash
-cargo test
-```
+### Coding Endpoint（推荐用于代码生成）
 
-### 检查代码
-```bash
-cargo check
-```
+- **端点**: `https://open.bigmodel.cn/api/coding/paas/v4/chat/completions`
+- **认证**: `Authorization: Bearer <api-key>`
+- **流式传输**: 支持 `stream: true`
+- **最大 tokens**: 65536
+- **温度范围**: 0.0-2.0
+- **适配器**: 使用 ZAI adapter（GLM 模型的原生适配器）
 
-### 格式化代码
-```bash
-cargo fmt
-```
+### 标准 Endpoint
 
-### 运行 linter
-```bash
-cargo clippy
-```
+- **端点**: `https://open.bigmodel.cn/api/paas/v4/chat/completions`
+- 注意：此 endpoint 可能需要不同的资源包
 
-## 相关资源
+## 重要提示
 
-- [Anthropic API 文档](https://docs.anthropic.com/)
-- [Tirea 框架文档](https://github.com/tirea-framework/tirea)
-- [Rust 官方文档](https://www.rust-lang.org/learn)
+1. **不要设置 OPENAI_BASE_URL 环境变量**：代码通过 `client_resolver.rs` 自动配置正确的 endpoint
+2. **只要设置 OPENAI_API_KEY**：endpoint 会在代码中自动设置为 coding endpoint
+3. **余额要求**：确保您的 BigModel.cn 账户有足够的余额或有效的资源包
 
-## 许可证
+## 故障排除
 
-MIT License
+**问题**：显示 "API key not set"
+**解决**：确保 `OPENAI_API_KEY` 环境变量已设置，运行 `echo $OPENAI_API_KEY` 检查
+
+**问题**：认证失败
+**解决**：检查 API key 是否正确，确保从 BigModel.cn 获取的是有效密钥
+
+**问题**：连接超时
+**解决**：检查网络连接，确保可以访问 `open.bigmodel.cn`

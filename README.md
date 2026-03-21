@@ -35,7 +35,7 @@ You> exit
 
 ## 📋 详细文档
 
-- [HOW_TO_USE.md](HOW_TO_USE.md) - 详细使用指南
+- [doc/usage.md](doc/usage.md) - 详细使用指南
 - [SETUP.md](SETUP.md) - 配置说明
 - [QUICKSTART.md](QUICKSTART.md) - 快速开始
 
