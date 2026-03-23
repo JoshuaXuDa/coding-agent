@@ -15,6 +15,16 @@ use tirea::prelude::Tool;
 /// Default configuration file path
 const DEFAULT_CONFIG_PATH: &str = "config/agent.json";
 
+/// Default system prompt file path
+const DEFAULT_PROMPT_PATH: &str = "config/prompt.txt";
+
+/// Load system prompt from the external file
+fn load_system_prompt() -> Result<String> {
+    let prompt_path = Path::new(DEFAULT_PROMPT_PATH);
+    std::fs::read_to_string(prompt_path)
+        .with_context(|| format!("Failed to read system prompt file: {}", prompt_path.display()))
+}
+
 /// Provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
@@ -68,8 +78,15 @@ pub fn load_config_file(path: impl AsRef<Path>) -> Result<Config> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
-    let config: Config = serde_json::from_str(&content)
+    let mut config: Config = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
+
+    // Override system_prompt from external file for all agents
+    let system_prompt = load_system_prompt()
+        .unwrap_or_else(|_| "You are a helpful coding assistant.".to_string());
+    for agent in &mut config.agents {
+        agent.system_prompt = system_prompt.clone();
+    }
 
     Ok(config)
 }
@@ -116,7 +133,8 @@ pub fn load_config_or_default() -> Result<Config> {
         agents: vec![AgentEntryConfig {
             id: "coding-agent".to_string(),
             model: Some("default".to_string()),
-            system_prompt: crate::prompt::SYSTEM_PROMPT.to_string(),
+            system_prompt: load_system_prompt()
+                .unwrap_or_else(|_| "You are a helpful coding assistant.".to_string()),
             max_rounds: Some(50),
         }],
     })

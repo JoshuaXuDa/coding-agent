@@ -6,7 +6,6 @@
 mod state;
 mod tools;
 mod behaviors;
-mod prompt;
 mod config;
 mod llm_logger;
 mod platform;

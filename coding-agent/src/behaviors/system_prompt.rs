@@ -4,6 +4,8 @@
 //! the system prompt that defines the agent's role and behavior.
 
 use tirea::prelude::AgentBehavior;
+use std::path::Path;
+use anyhow::Context;
 
 /// SystemPromptBehavior - Inject system prompt
 #[derive(Debug, Clone)]
@@ -15,8 +17,15 @@ impl SystemPromptBehavior {
     /// Create a new SystemPromptBehavior
     pub fn new() -> Self {
         Self {
-            prompt: crate::prompt::SYSTEM_PROMPT.to_string(),
+            prompt: Self::load_prompt().unwrap_or_else(|_| "You are a helpful coding assistant.".to_string()),
         }
+    }
+
+    /// Load the system prompt from the external file
+    fn load_prompt() -> anyhow::Result<String> {
+        let prompt_path = Path::new("config/prompt.txt");
+        std::fs::read_to_string(prompt_path)
+            .with_context(|| format!("Failed to read system prompt file: {}", prompt_path.display()))
     }
 
     /// Create a behavior with a custom prompt
