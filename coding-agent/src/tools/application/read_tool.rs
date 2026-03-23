@@ -2,7 +2,8 @@
 //!
 //! Orchestrates file system operations to provide file reading functionality.
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use base64::Engine as _;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -11,7 +12,8 @@ use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
 use crate::tools::domain::validation::{validate_path, validate_read_range};
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::xml_builder::{XmlBuilder, ImageMetadata, PdfMetadata};
+use crate::tools::domain::file_type::{FileCategory, FileTypeDetector};
 use crate::tools::truncate_output;
 
 /// Read tool
@@ -52,10 +54,13 @@ impl ReadTool {
     }
 
     /// Read file with range support
-    async fn read_file_with_range(&self, path: &Path, offset: Option<usize>, limit: Option<usize>) -> Result<String> {
+    async fn read_file_with_range(&self, path: &Path, offset: Option<usize>, limit: Option<usize>) -> Result<FileReadResult> {
         let content = self.fs.read_file(path).await?;
 
-        let result = match (offset, limit) {
+        // Calculate total line count before applying range filters
+        let total_lines = content.lines().count();
+
+        let result_content = match (offset, limit) {
             (Some(offset), Some(limit)) => {
                 // Read from offset with limit
                 let lines: Vec<&str> = content.lines().skip(offset).take(limit).collect();
@@ -77,8 +82,22 @@ impl ReadTool {
             }
         };
 
-        Ok(result)
+        Ok(FileReadResult {
+            content: result_content,
+            total_lines,
+        })
     }
+}
+
+/// File read result
+///
+/// Contains both the content and metadata about the file.
+#[derive(Debug, Clone)]
+struct FileReadResult {
+    /// The file content (possibly filtered by range)
+    content: String,
+    /// Total number of lines in the file
+    total_lines: usize,
 }
 
 /// Read tool arguments
@@ -87,6 +106,117 @@ struct ReadArgs {
     path: String,
     offset: Option<usize>,
     limit: Option<usize>,
+}
+
+/// Extract text from PDF file
+fn extract_pdf_text(data: &[u8]) -> Result<(String, PdfMetadata)> {
+    use lopdf::Document;
+
+    let doc = Document::load_mem(data)
+        .map_err(|e| anyhow!("Failed to parse PDF: {}", e))?;
+
+    // Get page count
+    let pages = doc.get_pages().len() as u32;
+
+    // Try to extract text from pages
+    // This is a simplified approach - lopdf doesn't have built-in text extraction
+    // For now, we'll just extract basic info
+    let text_content = format!("[PDF Document with {} pages - text extraction not fully implemented]", pages);
+
+    // Try to extract metadata from document info
+    let mut title: Option<String> = None;
+    let mut author: Option<String> = None;
+
+    // Access trailer directly (public field in lopdf 0.31)
+    let trailer = &doc.trailer;
+
+    // Get Info dictionary
+    if let Ok(info_obj) = trailer.get(b"Info") {
+        if let Ok(info_ref) = info_obj.as_reference() {
+            // Dereference the Info dictionary
+            if let Ok(info) = doc.get_object(info_ref) {
+                if let Ok(info_dict) = info.as_dict() {
+                    // Extract Title - as_str returns Result<&[u8], lopdf::Error>
+                    if let Ok(title_obj) = info_dict.get(b"Title") {
+                        if let Ok(title_bytes) = title_obj.as_str() {
+                            title = Some(String::from_utf8_lossy(title_bytes).to_string());
+                        }
+                    }
+                    // Extract Author
+                    if let Ok(author_obj) = info_dict.get(b"Author") {
+                        if let Ok(author_bytes) = author_obj.as_str() {
+                            author = Some(String::from_utf8_lossy(author_bytes).to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let pdf_metadata = PdfMetadata {
+        pages: Some(pages),
+        title,
+        author,
+        size: data.len(),
+    };
+
+    Ok((text_content, pdf_metadata))
+}
+
+/// Extract image metadata
+fn extract_image_metadata(data: &[u8], format: &str) -> Result<ImageMetadata> {
+    let mut metadata = ImageMetadata {
+        format: format.to_string(),
+        size: data.len(),
+        ..Default::default()
+    };
+
+    // Try to get image dimensions using the image crate
+    // For now, just set basic metadata
+    // Full implementation would decode the image header
+    match format {
+        "png" => {
+            // PNG width/height are at bytes 16-23 (big-endian)
+            if data.len() >= 24 {
+                let width = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
+                let height = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
+                metadata.width = Some(width);
+                metadata.height = Some(height);
+            }
+            // PNG color type is at byte 25
+            if data.len() >= 26 {
+                let color_type = data[25];
+                metadata.color_type = Some(match color_type {
+                    0 => "Grayscale",
+                    2 => "RGB",
+                    3 => "Indexed",
+                    4 => "Grayscale with Alpha",
+                    6 => "RGBA",
+                    _ => "Unknown",
+                }.to_string());
+                metadata.has_alpha = Some(color_type == 4 || color_type == 6);
+            }
+        }
+        "jpeg" | "jpg" => {
+            // JPEG is more complex, skip for now
+            metadata.color_type = Some("YCbCr".to_string());
+        }
+        _ => {
+            // Unknown format
+        }
+    }
+
+    Ok(metadata)
+}
+
+/// Create hex preview of binary data
+fn hex_preview(data: &[u8], max_bytes: usize) -> String {
+    let bytes_to_show = data.len().min(max_bytes);
+    let hex: Vec<String> = data[..bytes_to_show]
+        .iter()
+        .map(|b| format!("{:02X}", b))
+        .collect();
+    hex.join(" ")
 }
 
 impl Tool for ReadTool {
@@ -151,18 +281,123 @@ impl Tool for ReadTool {
                 return Ok(ToolResult::success("read", xml));
             }
 
-            // Read file with range
-            let content = self.read_file_with_range(path, read_args.offset, read_args.limit).await
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+            // Detect file type
+            let file_category = FileTypeDetector::detect_from_path(path)
+                .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
-            // Truncate if too large
-            let content = truncate_output(&content);
+            // Route to appropriate handler based on file type
+            match file_category {
+                FileCategory::Text | FileCategory::Markdown | FileCategory::Json => {
+                    // Read as text
+                    let read_result = self.read_file_with_range(path, read_args.offset, read_args.limit).await
+                        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
-            // Build XML response
-            let xml = XmlBuilder::build_file_content_xml(&read_args.path, &content, read_args.offset, read_args.limit)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                    // Truncate if too large
+                    let content = truncate_output(&read_result.content);
 
-            Ok(ToolResult::success("read", xml))
+                    // Build XML response with total line count
+                    let xml = XmlBuilder::build_file_content_xml(
+                        &read_args.path,
+                        &content,
+                        read_args.offset,
+                        read_args.limit,
+                        Some(read_result.total_lines),
+                    ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+                    Ok(ToolResult::success("read", xml))
+                }
+
+                FileCategory::Pdf => {
+                    // Read PDF as binary
+                    let data = self.fs.read_file_binary(path).await
+                        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+                    // Extract text and metadata
+                    let (text_content, pdf_metadata) = extract_pdf_text(&data)
+                        .unwrap_or_else(|e| (format!("[Error extracting PDF text: {}]", e), PdfMetadata {
+                            pages: None,
+                            title: None,
+                            author: None,
+                            size: data.len(),
+                        }));
+
+                    // Base64 encode if small enough
+                    let base64_content = if FileTypeDetector::can_encode_base64(data.len(), file_category) {
+                        Some(base64::engine::general_purpose::STANDARD.encode(&data))
+                    } else {
+                        None
+                    };
+
+                    // Build PDF XML
+                    let xml = XmlBuilder::build_pdf_xml(
+                        &read_args.path,
+                        &text_content,
+                        base64_content.as_deref(),
+                        &pdf_metadata,
+                    ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+                    Ok(ToolResult::success("read", xml))
+                }
+
+                FileCategory::Image => {
+                    // Read image as binary
+                    let data = self.fs.read_file_binary(path).await
+                        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+                    // Extract image metadata
+                    let format = path.extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("unknown");
+
+                    let image_metadata = extract_image_metadata(&data, format)
+                        .unwrap_or_else(|_| ImageMetadata {
+                            format: format.to_string(),
+                            size: data.len(),
+                            ..Default::default()
+                        });
+
+                    // Base64 encode image
+                    let base64_content = base64::engine::general_purpose::STANDARD.encode(&data);
+
+                    // Build image XML
+                    let xml = XmlBuilder::build_image_xml(
+                        &read_args.path,
+                        &base64_content,
+                        &image_metadata,
+                    ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+                    Ok(ToolResult::success("read", xml))
+                }
+
+                FileCategory::Binary => {
+                    // Read binary file
+                    let data = self.fs.read_file_binary(path).await
+                        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+                    // Check if we can base64 encode
+                    if FileTypeDetector::can_encode_base64(data.len(), file_category) {
+                        // Base64 encode small binary
+                        let base64_content = base64::engine::general_purpose::STANDARD.encode(&data);
+                        let xml = XmlBuilder::build_binary_xml(
+                            &read_args.path,
+                            &base64_content,
+                            data.len(),
+                        ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+                        Ok(ToolResult::success("read", xml))
+                    } else {
+                        // File too large - return error with preview
+                        let preview = hex_preview(&data, 32);
+                        let xml = XmlBuilder::build_binary_too_large_error(
+                            &read_args.path,
+                            data.len(),
+                            &preview,
+                        ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+                        Ok(ToolResult::success("read", xml))
+                    }
+                }
+            }
         })
     }
 }
