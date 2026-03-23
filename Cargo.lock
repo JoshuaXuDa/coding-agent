@@ -246,8 +246,10 @@ dependencies = [
  "tempfile",
  "tirea",
  "tirea-agent-loop",
+ "tirea-agentos",
  "tirea-contract",
  "tirea-extension-permission",
+ "tirea-store-adapters",
  "tokio",
  "walkdir",
 ]
@@ -2554,6 +2556,23 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "tirea-store-adapters"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c549cc95bac5bde5b9a9eaffdcd27579d70c12f30bc1d63c3a81aaaf60653f08"
+dependencies = [
+ "async-trait",
+ "futures",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tirea-contract",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

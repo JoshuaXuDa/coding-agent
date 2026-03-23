@@ -8,41 +8,47 @@
 
 访问 [BigModel.cn](https://open.bigmodel.cn/) 获取你的 API key。
 
-### 2. 配置 API Key
+### 2. 配置
 
-**方式 1：使用 .env.local 文件（推荐）**
+CodingAgent 现在使用 JSON 配置文件进行配置，无需自定义代码。
 
-```bash
-# 复制配置模板
-cp .env.local.example .env.local
+**配置文件位置**: `coding-agent/config/agent.json`
 
-# 编辑 .env.local，设置你的 API key
-echo 'OPENAI_API_KEY="你的实际API密钥"' > .env.local
+```json
+{
+  "providers": {
+    "bigmodel-coding": {
+      "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4/",
+      "auth": { "kind": "env", "name": "OPENAI_API_KEY" },
+      "adapter_kind": "openai"
+    }
+  },
+  "models": {
+    "glm": { "provider": "bigmodel-coding", "model": "GLM-4.5-air" }
+  },
+  "agents": [{
+    "kind": "local",
+    "id": "coding-agent",
+    "model": "glm",
+    "system_prompt": "...",
+    "max_rounds": 50
+  }]
+}
 ```
 
-**方式 2：一次性环境变量**
-
+**环境变量**:
 ```bash
+# 设置 API Key
 export OPENAI_API_KEY="你的实际API密钥"
+
+# 可选：覆盖模型（默认使用配置文件中的设置）
 export AGENT_MODEL="glm-4.7"
-```
-
-**方式 3：添加到 shell profile**
-
-```bash
-echo 'export OPENAI_API_KEY="你的实际API密钥"' >> ~/.bashrc
-echo 'export AGENT_MODEL="glm-4.7"' >> ~/.bashrc
-source ~/.bashrc
 ```
 
 ### 3. 运行
 
 ```bash
-# 加载环境变量并运行
-source .env.local
-cargo run --release
-
-# 或者直接运行（如果已设置到 ~/.bashrc）
+cd coding-agent
 cargo run --release
 ```
 
@@ -52,9 +58,6 @@ cargo run --release
 
 ```
 🤖 CodingAgent starting...
-📦 Model: glm-4.7         ✅ 正确！
-📁 Session directory: ./sessions
-
 ✅ Registered 6 tools:
    - bash
    - edit
@@ -62,6 +65,9 @@ cargo run --release
    - grep
    - read
    - write
+
+📝 Loading configuration...
+✅ AgentOS initialized successfully
 
 ═══════════════════════════════════════════════════════════
   CodingAgent Ready - Type your message below
@@ -96,28 +102,71 @@ You> exit
 
 ## ⚙️ 配置选项
 
-### 模型选择
+### JSON 配置文件
 
-```bash
-# GLM-4 模型选项
-export AGENT_MODEL="glm-4.7"        # 最新 GLM-4.7（推荐）
-export AGENT_MODEL="glm-4"          # 标准 GLM-4
-export AGENT_MODEL="glm-4-flash"    # 更快响应
-export AGENT_MODEL="glm-4-plus"     # 增强能力
+配置文件 `coding-agent/config/agent.json` 支持：
+
+#### Providers (提供商)
+
+```json
+{
+  "providers": {
+    "bigmodel-coding": {
+      "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4/",
+      "auth": { "kind": "env", "name": "OPENAI_API_KEY" },
+      "adapter_kind": "openai"
+    },
+    "deepseek": {
+      "endpoint": "https://api.deepseek.com",
+      "auth": { "kind": "env", "name": "DEEPSEEK_API_KEY" }
+    }
+  }
+}
 ```
 
-### 会话配置
+- `endpoint`: API 端点 URL
+- `auth.kind`: 认证方式 (`env` 或 `token`)
+- `auth.name`: 环境变量名 (当 `kind: env`)
+- `adapter_kind`: 适配器类型 (`openai`, `anthropic`, 等)
 
-```bash
-MAX_ROUNDS=50              # 最大对话轮数
-SESSION_DIR=./sessions     # 会话存储目录
-RUST_LOG=debug            # 启用详细日志
+#### Models (模型)
+
+```json
+{
+  "models": {
+    "glm": { "provider": "bigmodel-coding", "model": "GLM-4.5-air" },
+    "gpt-4": { "provider": "openai", "model": "gpt-4-turbo" }
+  }
+}
 ```
+
+#### Agents (代理)
+
+```json
+{
+  "agents": [{
+    "kind": "local",
+    "id": "coding-agent",
+    "model": "glm",
+    "system_prompt": "...",
+    "max_rounds": 50
+  }]
+}
+```
+
+### GLM-4 模型选项
+
+在配置文件中修改 `model` 字段：
+
+- `GLM-4.5-air` - 轻量级模型（默认）
+- `GLM-4.5` - 标准模型
+- `glm-4-plus` - 增强能力
+- `glm-4-flash` - 更快响应
 
 ## 🔧 技术栈
 
 - **Rust** - 系统编程语言
-- **Tirea** - Agent 框架
+- **Tirea** - Agent 框架 (支持 JSON 配置)
 - **GLM-4** - 智谱 AI 大语言模型
 - **Tokio** - 异步运行时
 
@@ -125,63 +174,77 @@ RUST_LOG=debug            # 启用详细日志
 
 ### BigModel Coding Endpoint
 
-- **端点**: `https://open.bigmodel.cn/api/coding/paas/v4/chat/completions`
-- **认证**: `Authorization: Bearer <api-key>`
+- **端点**: `https://open.bigmodel.cn/api/coding/paas/v4/`
 - **适配器**: OpenAI 兼容
 - **流式传输**: 支持
 
-### 切换不同 API
+### 多提供商配置示例
 
-```bash
-# 使用 GLM-4（默认）
-export OPENAI_API_KEY="你的GLM密钥"
-export AGENT_MODEL="glm-4.7"
-
-# 使用 OpenAI
-export OPENAI_API_KEY="你的OpenAI密钥"
-export OPENAI_BASE_URL="https://api.openai.com/v1"
-export AGENT_MODEL="gpt-4"
-
-# 使用 DeepSeek
-export OPENAI_API_KEY="你的DeepSeek密钥"
-export OPENAI_BASE_URL="https://api.deepseek.com"
-export AGENT_MODEL="deepseek-chat"
+```json
+{
+  "providers": {
+    "bigmodel-coding": {
+      "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4/",
+      "auth": { "kind": "env", "name": "OPENAI_API_KEY" },
+      "adapter_kind": "openai"
+    },
+    "openai": {
+      "endpoint": "https://api.openai.com/v1",
+      "auth": { "kind": "env", "name": "OPENAI_API_KEY" }
+    },
+    "deepseek": {
+      "endpoint": "https://api.deepseek.com",
+      "auth": { "kind": "env", "name": "DEEPSEEK_API_KEY" }
+    }
+  },
+  "models": {
+    "glm": { "provider": "bigmodel-coding", "model": "GLM-4.5-air" },
+    "gpt-4": { "provider": "openai", "model": "gpt-4-turbo" },
+    "deepseek-chat": { "provider": "deepseek", "model": "deepseek-chat" }
+  },
+  "agents": [{
+    "id": "coding-agent",
+    "model": "glm",
+    "system_prompt": "..."
+  }]
+}
 ```
 
 ## ❓ 常见问题
 
-### Model 还是 `claude-sonnet-4-6`？
-
-确保设置了 `AGENT_MODEL=glm-4.7` 环境变量。
-
 ### 提示 "API key not set"
 
-检查 API key 是否正确设置：
+确保设置了环境变量：
 ```bash
-echo $OPENAI_API_KEY
+export OPENAI_API_KEY="你的API密钥"
 ```
 
 ### 认证失败
 
-确认 API key 来自 BigModel.cn 且有效。
-
-### 余额不足
-
-在 [BigModel.cn](https://open.bigmodel.cn/) 充值或购买资源包。
+确认 API key 有效，且配置文件中的 `endpoint` 和 `adapter_kind` 正确。
 
 ### 编译失败
 
-确保使用新版本 Rust（1.82+）：
+确保使用新版本 Rust（1.70+）：
 ```bash
 source "$HOME/.cargo/env"
 rustc --version
 ```
 
+### 配置文件加载失败
+
+检查 `coding-agent/config/agent.json` 是否存在且 JSON 格式正确。
+
 ## ⚠️ 安全提醒
 
-**绝对不要**将 API key 直接写在代码中或提交到 git 仓库！
+**绝对不要**将 API key 直接写在配置文件中或提交到 git 仓库！
 
-使用 `.env.local` 文件（已在 `.gitignore` 中）来存储敏感信息。
+使用环境变量来存储敏感信息：
+```json
+{
+  "auth": { "kind": "env", "name": "OPENAI_API_KEY" }
+}
+```
 
 ## 📄 许可证
 
