@@ -33,3 +33,6 @@ sessions/
 # OS specific
 Thumbs.db
 .DS_Store
+
+# Logs directory
+logs/
