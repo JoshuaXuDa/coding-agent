@@ -3,6 +3,13 @@
 //! This module implements the core coding tools that form
 //! the core domain of the CodingAgent bounded context.
 
+// Domain layer
+pub mod domain;
+
+// Application layer
+pub mod application;
+
+// Legacy placeholders (will be removed)
 pub mod read_tool;
 pub mod write_tool;
 pub mod edit_tool;
@@ -15,49 +22,8 @@ pub mod head_tail_tool;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
-use tirea_contract::ToolCallContext;
-use serde_json::Value;
-
-// Type aliases for tool execution
-pub type ToolArgs = Value;
-pub type ToolContext = ();
-pub type ToolExecutionEffect = String;
-
-/// Simple tool wrapper for compatibility
-pub struct SimpleTool {
-    name: String,
-    description: String,
-}
-
-impl SimpleTool {
-    pub fn new(name: String, description: String) -> Self {
-        Self { name, description }
-    }
-}
-
-impl Tool for SimpleTool {
-    fn descriptor(&self) -> ToolDescriptor {
-        ToolDescriptor {
-            id: self.name.clone(),
-            name: self.name.clone(),
-            description: self.description.clone(),
-            category: Some("tool".to_string()),
-            parameters: Default::default(),
-            metadata: Default::default(),
-        }
-    }
-
-    fn execute<'life0: 'async_trait, 'life1: 'async_trait, 'life2: 'async_trait, 'async_trait>(
-        &'life0 self,
-        _args: serde_json::Value,
-        _context: &'life1 ToolCallContext<'life2>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ToolResult, ToolError>> + Send + 'async_trait>> {
-        Box::pin(async move {
-            Ok(ToolResult::success("simple_tool", "Tool executed"))
-        })
-    }
-}
+use tirea::prelude::Tool;
+use crate::platform::{create_filesystem, create_command_executor};
 
 /// Build the tool map for the CodingAgent
 ///
@@ -66,45 +32,46 @@ impl Tool for SimpleTool {
 pub fn build_tool_map() -> HashMap<String, Arc<dyn Tool>> {
     let mut tools = HashMap::new();
 
-    // Core tools - keeping existing SimpleTool wrappers for now
-    tools.insert("glob".to_string(), Arc::new(SimpleTool::new(
-        "glob".to_string(),
-        "File pattern matching tool".to_string(),
-    )) as Arc<dyn Tool>);
-    tools.insert("grep".to_string(), Arc::new(SimpleTool::new(
-        "grep".to_string(),
-        "Content search tool".to_string(),
-    )) as Arc<dyn Tool>);
-    tools.insert("read".to_string(), Arc::new(SimpleTool::new(
-        "read".to_string(),
-        "File reading tool".to_string(),
-    )) as Arc<dyn Tool>);
-    tools.insert("write".to_string(), Arc::new(SimpleTool::new(
-        "write".to_string(),
-        "File writing tool".to_string(),
-    )) as Arc<dyn Tool>);
-    tools.insert("bash".to_string(), Arc::new(SimpleTool::new(
-        "bash".to_string(),
-        "Shell command execution tool".to_string(),
-    )) as Arc<dyn Tool>);
-    tools.insert("edit".to_string(), Arc::new(SimpleTool::new(
-        "edit".to_string(),
-        "String replacement tool".to_string(),
-    )) as Arc<dyn Tool>);
+    // Create platform services
+    let fs = create_filesystem();
+    let executor = create_command_executor();
 
-    // Additional tools - new tools
-    tools.insert("list".to_string(), Arc::new(SimpleTool::new(
-        "list".to_string(),
-        "Directory listing tool (ls -l style)".to_string(),
-    )) as Arc<dyn Tool>);
-    tools.insert("stat".to_string(), Arc::new(SimpleTool::new(
-        "stat".to_string(),
-        "File/directory metadata tool".to_string(),
-    )) as Arc<dyn Tool>);
-    tools.insert("head_tail".to_string(), Arc::new(SimpleTool::new(
-        "head_tail".to_string(),
-        "View first or last N lines of a file".to_string(),
-    )) as Arc<dyn Tool>);
+    // Register all implemented tools
+    tools.insert("list".to_string(), Arc::new(
+        crate::tools::application::list_tool::ListTool::new(fs.clone())
+    ) as Arc<dyn Tool>);
+
+    tools.insert("read".to_string(), Arc::new(
+        crate::tools::application::read_tool::ReadTool::new(fs.clone())
+    ) as Arc<dyn Tool>);
+
+    tools.insert("write".to_string(), Arc::new(
+        crate::tools::application::write_tool::WriteTool::new(fs.clone())
+    ) as Arc<dyn Tool>);
+
+    tools.insert("stat".to_string(), Arc::new(
+        crate::tools::application::stat_tool::StatTool::new(fs.clone())
+    ) as Arc<dyn Tool>);
+
+    tools.insert("glob".to_string(), Arc::new(
+        crate::tools::application::glob_tool::GlobTool::new(fs.clone())
+    ) as Arc<dyn Tool>);
+
+    tools.insert("grep".to_string(), Arc::new(
+        crate::tools::application::grep_tool::GrepTool::new(fs.clone())
+    ) as Arc<dyn Tool>);
+
+    tools.insert("bash".to_string(), Arc::new(
+        crate::tools::application::bash_tool::BashTool::new(executor)
+    ) as Arc<dyn Tool>);
+
+    tools.insert("edit".to_string(), Arc::new(
+        crate::tools::application::edit_tool::EditTool::new(fs.clone())
+    ) as Arc<dyn Tool>);
+
+    tools.insert("head_tail".to_string(), Arc::new(
+        crate::tools::application::head_tail_tool::HeadTailTool::new(fs)
+    ) as Arc<dyn Tool>);
 
     tools
 }

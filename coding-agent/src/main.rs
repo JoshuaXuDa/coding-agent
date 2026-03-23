@@ -9,6 +9,7 @@ mod behaviors;
 mod prompt;
 mod config;
 mod llm_logger;
+mod platform;
 
 use std::io::{self, BufRead, Write};
 

@@ -25,6 +25,13 @@ env_logger = "0.10"
 futures = "0.3"
 genai = "0.6.0-beta.5"
 dotenv = "0.15"
+quick-xml = { version = "0.31", features = ["serialize"] }
+command-group = "5"
+path-clean = "0.1"
+pathdiff = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 tempfile = "3"
