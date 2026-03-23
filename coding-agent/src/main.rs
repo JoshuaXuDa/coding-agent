@@ -8,12 +8,15 @@ mod tools;
 mod behaviors;
 mod prompt;
 mod config;
+mod llm_logger;
 
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 
 use tools::build_tool_map;
 use tirea_agentos::AgentOs;
 use tirea::contracts::AgentEvent;
+use llm_logger::LlmLogger;
+use std::time::Instant;
 
 
 /// Maximum number of inference rounds
@@ -68,16 +71,20 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
 
+    // Initialize LLM logger
+    let mut logger = LlmLogger::new()?;
+    println!("📝 LLM interaction logging enabled (logs/llm_interactions.log)");
+    println!();
+
     loop {
         // Display prompt
         print!("You> ");
         stdout.flush()?;
 
-        // Read user input
-        let mut input = String::new();
-        stdin.read_line(&mut input)?;
-
-        let input = input.trim();
+        // Read user input - handle invalid UTF-8 gracefully
+        let mut input_bytes = Vec::new();
+        stdin.lock().read_until(b'\n', &mut input_bytes)?;
+        let input = String::from_utf8_lossy(&input_bytes).trim_end().to_string();
 
         // Handle empty input
         if input.is_empty() {
@@ -85,7 +92,7 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
         }
 
         // Handle exit commands
-        if matches!(input, "exit" | "quit" | "q") {
+        if matches!(input.as_str(), "exit" | "quit" | "q") {
             println!("👋 Goodbye!");
             break;
         }
@@ -94,7 +101,7 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
         println!();
         println!("🔄 Processing...");
 
-        match process_message(&agent_os, input.to_string()).await {
+        match process_message(&agent_os, input.to_string(), &mut logger).await {
             Ok(response) => {
                 println!();
                 println!("═══════════════════════════════════════════════════════════");
@@ -106,9 +113,12 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
             Err(e) => {
                 println!();
                 println!("❌ Error: {}", e);
+                let _ = logger.log_error(&e.to_string());
             }
         }
 
+        // Flush logger after each message
+        let _ = logger.flush();
         println!();
     }
 
@@ -119,9 +129,13 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
 async fn process_message(
     agent_os: &AgentOs,
     message: String,
+    logger: &mut LlmLogger,
 ) -> anyhow::Result<String> {
     use tirea::prelude::Message;
     use tirea_contract::RunRequest;
+
+    // Log the user request
+    logger.log_request(&message)?;
 
     // Create run request with the user message
     let run_request = RunRequest {
@@ -137,6 +151,9 @@ async fn process_message(
         initial_decisions: vec![],
     };
 
+    // Start timing
+    let start_time = Instant::now();
+
     // Run the agent with streaming output
     let mut stream = agent_os.run_stream(run_request).await?;
 
@@ -151,12 +168,15 @@ async fn process_message(
             }
             AgentEvent::ToolCallStart { name, .. } => {
                 println!("\n[Calling tool: {}]", name);
+                // Log tool call (arguments not available in ToolCallStart event)
+                let _ = logger.log_tool_call(&name, &serde_json::json!({}));
             }
             AgentEvent::ToolCallDone { .. } => {
                 println!("[Tool done]");
             }
             AgentEvent::Error { message, .. } => {
                 eprintln!("ERROR: {}", message);
+                let _ = logger.log_error(&message);
                 return Err(anyhow::anyhow!("Agent error: {}", message));
             }
             _ => {
@@ -164,6 +184,13 @@ async fn process_message(
             }
         }
     }
+
+    let duration = start_time.elapsed().as_millis() as u64;
+
     println!(); // newline after streaming output
+
+    // Log the response
+    logger.log_response(&final_response, duration)?;
+
     Ok(final_response)
 }

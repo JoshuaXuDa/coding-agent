@@ -1,7 +1,17 @@
 //! Tools module for CodingAgent
 //!
-//! This module implements the 6 core coding tools that form
+//! This module implements the core coding tools that form
 //! the core domain of the CodingAgent bounded context.
+
+pub mod read_tool;
+pub mod write_tool;
+pub mod edit_tool;
+pub mod glob_tool;
+pub mod grep_tool;
+pub mod bash_tool;
+pub mod list_tool;
+pub mod stat_tool;
+pub mod head_tail_tool;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -56,49 +66,45 @@ impl Tool for SimpleTool {
 pub fn build_tool_map() -> HashMap<String, Arc<dyn Tool>> {
     let mut tools = HashMap::new();
 
-    // Register simplified tools for now
-    tools.insert(
+    // Core tools - keeping existing SimpleTool wrappers for now
+    tools.insert("glob".to_string(), Arc::new(SimpleTool::new(
         "glob".to_string(),
-        Arc::new(SimpleTool::new(
-            "glob".to_string(),
-            "File pattern matching tool".to_string(),
-        )) as Arc<dyn Tool>,
-    );
-    tools.insert(
+        "File pattern matching tool".to_string(),
+    )) as Arc<dyn Tool>);
+    tools.insert("grep".to_string(), Arc::new(SimpleTool::new(
         "grep".to_string(),
-        Arc::new(SimpleTool::new(
-            "grep".to_string(),
-            "Content search tool".to_string(),
-        )) as Arc<dyn Tool>,
-    );
-    tools.insert(
+        "Content search tool".to_string(),
+    )) as Arc<dyn Tool>);
+    tools.insert("read".to_string(), Arc::new(SimpleTool::new(
         "read".to_string(),
-        Arc::new(SimpleTool::new(
-            "read".to_string(),
-            "File reading tool".to_string(),
-        )) as Arc<dyn Tool>,
-    );
-    tools.insert(
+        "File reading tool".to_string(),
+    )) as Arc<dyn Tool>);
+    tools.insert("write".to_string(), Arc::new(SimpleTool::new(
         "write".to_string(),
-        Arc::new(SimpleTool::new(
-            "write".to_string(),
-            "File writing tool".to_string(),
-        )) as Arc<dyn Tool>,
-    );
-    tools.insert(
+        "File writing tool".to_string(),
+    )) as Arc<dyn Tool>);
+    tools.insert("bash".to_string(), Arc::new(SimpleTool::new(
         "bash".to_string(),
-        Arc::new(SimpleTool::new(
-            "bash".to_string(),
-            "Shell command execution tool".to_string(),
-        )) as Arc<dyn Tool>,
-    );
-    tools.insert(
+        "Shell command execution tool".to_string(),
+    )) as Arc<dyn Tool>);
+    tools.insert("edit".to_string(), Arc::new(SimpleTool::new(
         "edit".to_string(),
-        Arc::new(SimpleTool::new(
-            "edit".to_string(),
-            "String replacement tool".to_string(),
-        )) as Arc<dyn Tool>,
-    );
+        "String replacement tool".to_string(),
+    )) as Arc<dyn Tool>);
+
+    // Additional tools - new tools
+    tools.insert("list".to_string(), Arc::new(SimpleTool::new(
+        "list".to_string(),
+        "Directory listing tool (ls -l style)".to_string(),
+    )) as Arc<dyn Tool>);
+    tools.insert("stat".to_string(), Arc::new(SimpleTool::new(
+        "stat".to_string(),
+        "File/directory metadata tool".to_string(),
+    )) as Arc<dyn Tool>);
+    tools.insert("head_tail".to_string(), Arc::new(SimpleTool::new(
+        "head_tail".to_string(),
+        "View first or last N lines of a file".to_string(),
+    )) as Arc<dyn Tool>);
 
     tools
 }
@@ -187,12 +193,15 @@ mod tests {
     #[test]
     fn test_build_tool_map() {
         let tools = build_tool_map();
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 9);
         assert!(tools.contains_key("glob"));
         assert!(tools.contains_key("grep"));
         assert!(tools.contains_key("read"));
         assert!(tools.contains_key("write"));
         assert!(tools.contains_key("bash"));
         assert!(tools.contains_key("edit"));
+        assert!(tools.contains_key("list"));
+        assert!(tools.contains_key("stat"));
+        assert!(tools.contains_key("head_tail"));
     }
 }

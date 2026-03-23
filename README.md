@@ -58,15 +58,21 @@ cargo run --release
 
 ```
 🤖 CodingAgent starting...
-✅ Registered 6 tools:
+✅ Registered 9 tools:
    - bash
    - edit
    - glob
    - grep
+   - head_tail
+   - list
    - read
+   - stat
    - write
 
+📝 LLM interaction logging enabled (logs/llm_interactions.log)
+
 📝 Loading configuration...
+✅ Agent: coding-agent
 ✅ AgentOS initialized successfully
 
 ═══════════════════════════════════════════════════════════
@@ -99,6 +105,31 @@ You> exit
 | **edit** | 编辑文件 | 精准修改现有文件 |
 | **glob** | 查找文件 | `**/*.rs`、`src/**/*.json` |
 | **grep** | 搜索内容 | `fn\s+\w+`、`TODO` |
+| **list** | 列出目录内容 | 列出 `src/` 目录文件 |
+| **stat** | 获取文件信息 | 查看 `Cargo.toml` 详细信息 |
+| **head_tail** | 预览文件首尾 | 查看文件前 10 行或后 10 行 |
+
+## 📊 LLM 交互日志
+
+CodingAgent 现在支持 LLM 交互日志记录，所有对话、工具调用和响应都会被记录到 `logs/llm_interactions.log`。
+
+**日志格式** (JSON):
+```json
+{
+  "timestamp": "2026-03-23T10:30:45Z",
+  "type": "request|response|tool_call|error",
+  "round": 1,
+  "user_message": "...",
+  "llm_response": "...",
+  "duration_ms": 1234
+}
+```
+
+**查看日志**:
+```bash
+cat logs/llm_interactions.log
+tail -f logs/llm_interactions.log
+```
 
 ## ⚙️ 配置选项
 
