@@ -2,6 +2,18 @@
 //!
 //! This module defines the core domain models and services for tool operations.
 
+pub mod validation;
 pub mod xml_builder;
+pub mod error_handler;
+pub mod file_operations;
+pub mod permissions;
+pub mod concurrency;
+pub mod async_bridge;
 
+pub use validation::*;
 pub use xml_builder::*;
+pub use error_handler::*;
+pub use file_operations::*;
+pub use permissions::*;
+pub use concurrency::*;
+pub use async_bridge::*;

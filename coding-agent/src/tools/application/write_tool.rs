@@ -10,7 +10,14 @@ use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::{
+    validation::validate_content_size,
+    xml_builder::XmlBuilder,
+    error_handler::ErrorHandler,
+    file_operations::FileOperationPrechecker,
+    permissions::PermissionChecker,
+    concurrency::FileLockManager,
+};
 
 /// Write tool
 ///
@@ -18,12 +25,27 @@ use crate::tools::domain::xml_builder::XmlBuilder;
 pub struct WriteTool {
     /// File system service
     fs: Arc<dyn FileSystem>,
+    /// File operation prechecker
+    prechecker: FileOperationPrechecker,
+    /// Permission checker
+    permission_checker: PermissionChecker,
+    /// File lock manager
+    lock_manager: Arc<FileLockManager>,
 }
 
 impl WriteTool {
     /// Create a new write tool
     pub fn new(fs: Arc<dyn FileSystem>) -> Self {
-        Self { fs }
+        let prechecker = FileOperationPrechecker::new(fs.clone());
+        let permission_checker = PermissionChecker::new(fs.clone());
+        let lock_manager = Arc::new(FileLockManager::new());
+
+        Self {
+            fs,
+            prechecker,
+            permission_checker,
+            lock_manager,
+        }
     }
 
     /// Parse tool arguments
@@ -38,6 +60,9 @@ impl WriteTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'content' argument"))?;
 
+        // Validate content size
+        validate_content_size(content)?;
+
         let create_dirs = args
             .get("create_dirs")
             .and_then(|v| v.as_bool())
@@ -48,21 +73,6 @@ impl WriteTool {
             content: content.to_string(),
             create_dirs,
         })
-    }
-
-    /// Validate path
-    fn validate_path(path: &str) -> Result<()> {
-        // Check for suspicious paths
-        if path.contains("..") {
-            anyhow::bail!("Path contains '..' which may lead to directory traversal");
-        }
-
-        // Check if path is empty
-        if path.is_empty() {
-            anyhow::bail!("Path cannot be empty");
-        }
-
-        Ok(())
     }
 }
 
@@ -108,34 +118,73 @@ impl Tool for WriteTool {
         Box::pin(async move {
             // Parse arguments
             let write_args = Self::parse_args(&args)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-            // Validate path
-            Self::validate_path(&write_args.path)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                .map_err(ErrorHandler::to_tool_error)?;
 
             let path = Path::new(&write_args.path);
 
-            // Check if path exists and is a directory
+            // Check if we can create/write to the file
+            self.prechecker.verify_can_create_file(path).await
+                .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+            // Check write permissions
+            let perm_status = self.permission_checker.check_write_permission(path).await
+                .map_err(ErrorHandler::to_tool_error)?;
+
+            if !perm_status.allowed {
+                let xml = XmlBuilder::build_error(
+                    "write",
+                    "PERMISSION_DENIED",
+                    &perm_status.reason.unwrap_or_else(|| "Permission denied".to_string()),
+                    &perm_status.suggestion.unwrap_or_else(|| "Check file permissions".to_string()),
+                ).map_err(ErrorHandler::to_tool_error)?;
+
+                return Ok(ToolResult::success("write", xml));
+            }
+
+            // Check if path is a directory
             if self.fs.exists(path) && self.fs.is_dir(path) {
                 let xml = XmlBuilder::build_error(
                     "write",
                     "IS_DIRECTORY",
                     &format!("Cannot write to directory: {}", write_args.path),
                     &format!("The path '{}' is a directory", write_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                ).map_err(ErrorHandler::to_tool_error)?;
 
                 return Ok(ToolResult::success("write", xml));
             }
 
+            // Check parent directory write permission if creating new file
+            if !self.fs.exists(path) {
+                if let Some(parent) = path.parent() {
+                    if !parent.as_os_str().is_empty() && self.fs.exists(parent) {
+                        let dir_perm_status = self.permission_checker.check_directory_create_permission(parent).await
+                            .map_err(ErrorHandler::to_tool_error)?;
+
+                        if !dir_perm_status.allowed {
+                            let xml = XmlBuilder::build_error(
+                                "write",
+                                "PERMISSION_DENIED",
+                                &dir_perm_status.reason.unwrap_or_else(|| "Cannot create file".to_string()),
+                                &dir_perm_status.suggestion.unwrap_or_else(|| "Check parent directory permissions".to_string()),
+                            ).map_err(ErrorHandler::to_tool_error)?;
+
+                            return Ok(ToolResult::success("write", xml));
+                        }
+                    }
+                }
+            }
+
+            // Acquire write lock for concurrent access protection
+            let _lock = self.lock_manager.acquire_write_lock(path).await;
+
             // Write file
             self.fs.write_file(path, &write_args.content).await
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(format!("Failed to write file: {}", e)))?;
+                .map_err(|e| ToolError::ExecutionFailed(format!("Failed to write file: {}", e)))?;
 
             // Build XML response
             let bytes_written = write_args.content.len();
             let xml = XmlBuilder::build_write_result_xml(&write_args.path, bytes_written)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                .map_err(ErrorHandler::to_tool_error)?;
 
             Ok(ToolResult::success("write", xml))
         })
@@ -159,9 +208,32 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_path() {
-        assert!(WriteTool::validate_path("/tmp/test.txt").is_ok());
-        assert!(WriteTool::validate_path("").is_err());
-        assert!(WriteTool::validate_path("/tmp/../etc/passwd").is_err());
+    fn test_parse_args_empty_content() {
+        let args = serde_json::json!({
+            "path": "/tmp/test.txt",
+            "content": ""
+        });
+        assert!(WriteTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_large_content() {
+        use crate::tools::domain::validation::MAX_CONTENT_SIZE;
+
+        let args = serde_json::json!({
+            "path": "/tmp/test.txt",
+            "content": "x".repeat(MAX_CONTENT_SIZE + 1)
+        });
+        assert!(WriteTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_valid_path_traversal() {
+        let args = serde_json::json!({
+            "path": "../../etc/passwd",
+            "content": "malicious"
+        });
+        // Path validation happens in execute, not parse_args
+        assert!(WriteTool::parse_args(&args).is_ok());
     }
 }

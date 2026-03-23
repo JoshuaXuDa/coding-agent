@@ -10,6 +10,7 @@ use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
+use crate::tools::domain::validation::{validate_non_empty_string, validate_path};
 use crate::tools::domain::xml_builder::XmlBuilder;
 
 /// Glob tool
@@ -33,10 +34,18 @@ impl GlobTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'pattern' argument"))?;
 
+        // Validate pattern
+        validate_non_empty_string(pattern, "pattern")?;
+
         let path = args
             .get("path")
             .and_then(|v| v.as_str())
             .unwrap_or(".");
+
+        // Validate path if not "."
+        if path != "." {
+            validate_path(path)?;
+        }
 
         Ok(GlobArgs {
             pattern: pattern.to_string(),
@@ -159,5 +168,36 @@ mod tests {
         let parsed = GlobTool::parse_args(&args).unwrap();
         assert_eq!(parsed.pattern, "*.rs");
         assert_eq!(parsed.path, "src");
+    }
+
+    #[test]
+    fn test_parse_args_empty_pattern() {
+        let args = serde_json::json!({"pattern": ""});
+        assert!(GlobTool::parse_args(&args).is_err());
+
+        let args = serde_json::json!({"pattern": "   "});
+        assert!(GlobTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_path_traversal() {
+        let args = serde_json::json!({"pattern": "*.txt", "path": "../../etc"});
+        assert!(GlobTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_default_path_valid() {
+        // Default path "." should be valid
+        let args = serde_json::json!({"pattern": "*.txt", "path": "."});
+        assert!(GlobTool::parse_args(&args).is_ok());
+    }
+
+    #[test]
+    fn test_parse_args_valid_patterns() {
+        let args = serde_json::json!({"pattern": "**/*.rs"});
+        assert!(GlobTool::parse_args(&args).is_ok());
+
+        let args = serde_json::json!({"pattern": "src/**/test*.txt"});
+        assert!(GlobTool::parse_args(&args).is_ok());
     }
 }

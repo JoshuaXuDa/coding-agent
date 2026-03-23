@@ -11,6 +11,7 @@ use std::time::Duration;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::command::{CommandExecutor, CommandRequest};
+use crate::tools::domain::validation::{validate_command, validate_command_args, validate_path, validate_timeout};
 use crate::tools::domain::xml_builder::XmlBuilder;
 
 /// Bash tool
@@ -34,27 +35,44 @@ impl BashTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'command' argument"))?;
 
-        let args_list = args
+        // Validate command for security
+        validate_command(command)?;
+
+        let args_list: Vec<String> = args
             .get("args")
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
+
+        // Validate command arguments
+        validate_command_args(&args_list)?;
 
         let working_dir = args
             .get("working_dir")
             .and_then(|v| v.as_str())
             .map(String::from);
 
+        // Validate working directory if provided
+        if let Some(dir) = &working_dir {
+            validate_path(dir)?;
+        }
+
         let timeout_secs = args
             .get("timeout")
-            .and_then(|v| v.as_u64())
-            .map(|v| Duration::from_secs(v));
+            .and_then(|v| v.as_u64());
+
+        // Validate timeout if provided
+        if let Some(secs) = timeout_secs {
+            validate_timeout(secs)?;
+        }
+
+        let timeout = timeout_secs.map(|v| Duration::from_secs(v));
 
         Ok(BashArgs {
             command: command.to_string(),
             args: args_list,
             working_dir,
-            timeout: timeout_secs,
+            timeout,
         })
     }
 
@@ -182,5 +200,104 @@ mod tests {
         assert_eq!(parsed.args, vec!["status"]);
         assert_eq!(parsed.working_dir, Some("/tmp".to_string()));
         assert_eq!(parsed.timeout, Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn test_parse_args_empty_command() {
+        let args = serde_json::json!({"command": ""});
+        assert!(BashTool::parse_args(&args).is_err());
+
+        let args = serde_json::json!({"command": "   "});
+        assert!(BashTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_command_injection() {
+        // Test command chaining attempts
+        let args = serde_json::json!({"command": "ls && rm -rf /"});
+        assert!(BashTool::parse_args(&args).is_err());
+
+        let args = serde_json::json!({"command": "cat /etc/passwd; echo done"});
+        assert!(BashTool::parse_args(&args).is_err());
+
+        let args = serde_json::json!({"command": "echo $(whoami)"});
+        assert!(BashTool::parse_args(&args).is_err());
+
+        let args = serde_json::json!({"command": "ls `whoami`"});
+        assert!(BashTool::parse_args(&args).is_err());
+
+        let args = serde_json::json!({"command": "ls > /tmp/output"});
+        assert!(BashTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_path_traversal() {
+        let args = serde_json::json!({
+            "command": "ls",
+            "working_dir": "../../etc"
+        });
+        assert!(BashTool::parse_args(&args).is_err());
+
+        let args = serde_json::json!({
+            "command": "ls",
+            "working_dir": "/tmp/../etc"
+        });
+        assert!(BashTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_timeout_validation() {
+        // Timeout too short
+        let args = serde_json::json!({
+            "command": "ls",
+            "timeout": 0
+        });
+        assert!(BashTool::parse_args(&args).is_err());
+
+        // Timeout too long
+        let args = serde_json::json!({
+            "command": "ls",
+            "timeout": 700
+        });
+        assert!(BashTool::parse_args(&args).is_err());
+
+        // Valid timeout
+        let args = serde_json::json!({
+            "command": "ls",
+            "timeout": 30
+        });
+        assert!(BashTool::parse_args(&args).is_ok());
+    }
+
+    #[test]
+    fn test_parse_args_dangerous_arguments() {
+        let args = serde_json::json!({
+            "command": "echo",
+            "args": ["$(whoami)"]
+        });
+        assert!(BashTool::parse_args(&args).is_err());
+
+        let args = serde_json::json!({
+            "command": "echo",
+            "args": ["test;rm -rf /"]
+        });
+        assert!(BashTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_valid_complex_commands() {
+        // Valid multi-part command
+        let args = serde_json::json!({
+            "command": "cargo",
+            "args": ["build", "--release"]
+        });
+        assert!(BashTool::parse_args(&args).is_ok());
+
+        // Valid command with path
+        let args = serde_json::json!({
+            "command": "/usr/bin/git",
+            "args": ["status"]
+        });
+        assert!(BashTool::parse_args(&args).is_ok());
     }
 }

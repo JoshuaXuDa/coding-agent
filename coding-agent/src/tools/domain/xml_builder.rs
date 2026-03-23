@@ -347,8 +347,20 @@ pub struct GrepMatch {
     pub line_content: String,
 }
 
-/// Escape special XML characters
-fn escape_xml(s: &str) -> String {
+/// XmlBuilder associated function for escaping XML
+impl XmlBuilder {
+    /// Escape special XML characters
+    pub fn escape_xml(s: &str) -> String {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
+    }
+}
+
+/// Escape special XML characters (standalone function for backward compatibility)
+pub fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

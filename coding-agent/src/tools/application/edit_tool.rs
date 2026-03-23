@@ -10,7 +10,14 @@ use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::{
+    validation::{validate_path, validate_non_empty_string},
+    xml_builder::XmlBuilder,
+    error_handler::ErrorHandler,
+    file_operations::FileOperationPrechecker,
+    permissions::PermissionChecker,
+    concurrency::FileLockManager,
+};
 
 /// Edit tool
 ///
@@ -18,12 +25,27 @@ use crate::tools::domain::xml_builder::XmlBuilder;
 pub struct EditTool {
     /// File system service
     fs: Arc<dyn FileSystem>,
+    /// File operation prechecker
+    prechecker: FileOperationPrechecker,
+    /// Permission checker
+    permission_checker: PermissionChecker,
+    /// File lock manager
+    lock_manager: Arc<FileLockManager>,
 }
 
 impl EditTool {
     /// Create a new edit tool
     pub fn new(fs: Arc<dyn FileSystem>) -> Self {
-        Self { fs }
+        let prechecker = FileOperationPrechecker::new(fs.clone());
+        let permission_checker = PermissionChecker::new(fs.clone());
+        let lock_manager = Arc::new(FileLockManager::new());
+
+        Self {
+            fs,
+            prechecker,
+            permission_checker,
+            lock_manager,
+        }
     }
 
     /// Parse tool arguments
@@ -33,10 +55,16 @@ impl EditTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' argument"))?;
 
+        // Validate path
+        validate_path(path)?;
+
         let old_str = args
             .get("old_string")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'old_string' argument"))?;
+
+        // Validate old_string is not empty
+        validate_non_empty_string(old_str, "old_string")?;
 
         let new_str = args
             .get("new_string")
@@ -104,37 +132,35 @@ impl Tool for EditTool {
         Box::pin(async move {
             // Parse arguments
             let edit_args = Self::parse_args(&args)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                .map_err(ErrorHandler::to_tool_error)?;
 
             let path = Path::new(&edit_args.path);
 
-            // Check if path exists
-            if !self.fs.exists(path) {
+            // Check if file exists and is writable using prechecker
+            let file_info = self.prechecker.verify_file_writable(path).await
+                .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+            // Check write permissions
+            let perm_status = self.permission_checker.check_write_permission(path).await
+                .map_err(ErrorHandler::to_tool_error)?;
+
+            if !perm_status.allowed {
                 let xml = XmlBuilder::build_error(
                     "edit",
-                    "FILE_NOT_FOUND",
-                    &format!("File not found: {}", edit_args.path),
-                    &format!("The file '{}' does not exist", edit_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                    "PERMISSION_DENIED",
+                    &perm_status.reason.unwrap_or_else(|| "Permission denied".to_string()),
+                    &perm_status.suggestion.unwrap_or_else(|| "Check file permissions".to_string()),
+                ).map_err(ErrorHandler::to_tool_error)?;
 
                 return Ok(ToolResult::success("edit", xml));
             }
 
-            // Check if path is a file
-            if !self.fs.is_file(path) {
-                let xml = XmlBuilder::build_error(
-                    "edit",
-                    "NOT_A_FILE",
-                    &format!("Not a file: {}", edit_args.path),
-                    &format!("The path '{}' is not a file", edit_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-                return Ok(ToolResult::success("edit", xml));
-            }
+            // Acquire write lock for concurrent access protection
+            let _lock = self.lock_manager.acquire_write_lock(path).await;
 
             // Read file content
             let content = self.fs.read_file(path).await
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                .map_err(ErrorHandler::to_tool_error)?;
 
             // Perform replacement
             let new_content = if edit_args.replace_all {
@@ -150,14 +176,14 @@ impl Tool for EditTool {
                     "STRING_NOT_FOUND",
                     &format!("String not found: {}", edit_args.old_string),
                     &format!("The old string '{}' was not found in the file", edit_args.old_string),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                ).map_err(ErrorHandler::to_tool_error)?;
 
                 return Ok(ToolResult::success("edit", xml));
             }
 
             // Write modified content back
             self.fs.write_file(path, &new_content).await
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                .map_err(ErrorHandler::to_tool_error)?;
 
             // Build success XML
             let replacement_count = if edit_args.replace_all {
@@ -169,27 +195,18 @@ impl Tool for EditTool {
 
             let content = format!(
                 "<file path=\"{}\"><replacements>{}</replacements></file>",
-                xml_escape(&edit_args.path),
+                crate::tools::domain::escape_xml(&edit_args.path),
                 replacement_count
             );
 
             let summary = format!("Successfully replaced {} occurrence(s)", replacement_count);
 
             let xml = XmlBuilder::build_success("edit", &content, &summary)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                .map_err(ErrorHandler::to_tool_error)?;
 
             Ok(ToolResult::success("edit", xml))
         })
     }
-}
-
-/// Escape special XML characters
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
 }
 
 #[cfg(test)]
@@ -217,5 +234,53 @@ mod tests {
         });
         let parsed = EditTool::parse_args(&args).unwrap();
         assert!(parsed.replace_all);
+    }
+
+    #[test]
+    fn test_parse_args_empty_path() {
+        let args = serde_json::json!({
+            "path": "",
+            "old_string": "hello",
+            "new_string": "world"
+        });
+        assert!(EditTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_path_traversal() {
+        let args = serde_json::json!({
+            "path": "../../etc/passwd",
+            "old_string": "hello",
+            "new_string": "world"
+        });
+        assert!(EditTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_empty_old_string() {
+        let args = serde_json::json!({
+            "path": "/tmp/test.txt",
+            "old_string": "",
+            "new_string": "world"
+        });
+        assert!(EditTool::parse_args(&args).is_err());
+
+        let args = serde_json::json!({
+            "path": "/tmp/test.txt",
+            "old_string": "   ",
+            "new_string": "world"
+        });
+        assert!(EditTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_valid_empty_new_string() {
+        // new_string can be empty (for deletion)
+        let args = serde_json::json!({
+            "path": "/tmp/test.txt",
+            "old_string": "hello",
+            "new_string": ""
+        });
+        assert!(EditTool::parse_args(&args).is_ok());
     }
 }

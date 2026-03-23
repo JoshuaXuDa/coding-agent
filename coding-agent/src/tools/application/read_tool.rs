@@ -10,6 +10,7 @@ use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
+use crate::tools::domain::validation::{validate_path, validate_read_range};
 use crate::tools::domain::xml_builder::XmlBuilder;
 use crate::tools::truncate_output;
 
@@ -34,8 +35,14 @@ impl ReadTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' argument"))?;
 
+        // Validate path
+        validate_path(path)?;
+
         let offset = args.get("offset").and_then(|v| v.as_u64()).map(|v| v as usize);
         let limit = args.get("limit").and_then(|v| v.as_u64()).map(|v| v as usize);
+
+        // Validate offset and limit
+        validate_read_range(offset, limit)?;
 
         Ok(ReadArgs {
             path: path.to_string(),
@@ -164,6 +171,7 @@ impl Tool for ReadTool {
 mod tests {
     use super::*;
     use crate::platform::create_filesystem;
+    use crate::tools::domain::validation::{MAX_OFFSET, MAX_LIMIT};
 
     #[tokio::test]
     async fn test_parse_args() {
@@ -177,5 +185,38 @@ mod tests {
         let parsed = ReadTool::parse_args(&args).unwrap();
         assert_eq!(parsed.offset, Some(10));
         assert_eq!(parsed.limit, Some(20));
+    }
+
+    #[test]
+    fn test_parse_args_empty_path() {
+        let args = serde_json::json!({"path": ""});
+        assert!(ReadTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_path_traversal() {
+        let args = serde_json::json!({"path": "../../etc/passwd"});
+        assert!(ReadTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_invalid_range() {
+        // Offset too large
+        let args = serde_json::json!({"path": "/tmp/test.txt", "offset": MAX_OFFSET + 1});
+        assert!(ReadTool::parse_args(&args).is_err());
+
+        // Limit is zero
+        let args = serde_json::json!({"path": "/tmp/test.txt", "limit": 0});
+        assert!(ReadTool::parse_args(&args).is_err());
+
+        // Limit too large
+        let args = serde_json::json!({"path": "/tmp/test.txt", "limit": MAX_LIMIT + 1});
+        assert!(ReadTool::parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_parse_args_valid_range() {
+        let args = serde_json::json!({"path": "/tmp/test.txt", "offset": 1000, "limit": 50000});
+        assert!(ReadTool::parse_args(&args).is_ok());
     }
 }

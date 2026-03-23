@@ -1,6 +1,7 @@
 # Rust build artifacts
 target/
 Cargo.lock
+.cargo/
 
 # IDE and editor files
 .vscode/
@@ -29,6 +30,7 @@ sessions/
 # Claude Code specific
 .claude/projects/
 .claude/memory/
+.claude/settings.local.json
 
 # OS specific
 Thumbs.db

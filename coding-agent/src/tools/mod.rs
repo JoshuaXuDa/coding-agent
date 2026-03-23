@@ -9,17 +9,6 @@ pub mod domain;
 // Application layer
 pub mod application;
 
-// Legacy placeholders (will be removed)
-pub mod read_tool;
-pub mod write_tool;
-pub mod edit_tool;
-pub mod glob_tool;
-pub mod grep_tool;
-pub mod bash_tool;
-pub mod list_tool;
-pub mod stat_tool;
-pub mod head_tail_tool;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use tirea::prelude::Tool;
