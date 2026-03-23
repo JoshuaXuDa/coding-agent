@@ -78,7 +78,14 @@
       "Bash(rustup default:*)",
       "Bash(export RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static)",
       "Bash(export RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup)",
-      "Bash(jq -r '.error // \"\"\"\"Success\"\"\"\"')"
+      "Bash(jq -r '.error // \"\"\"\"Success\"\"\"\"')",
+      "Bash(find /mnt/workspace/coding-agent/samples/tirea -name \"*.json\" -type f -exec grep -l \"providers\" {})",
+      "Bash(jobs -l)",
+      "Bash(timeout 120 /mnt/workspace/coding-agent/target/release/coding-agent)",
+      "Bash(find /mnt/workspace/coding-agent/samples/tirea -name *.rs -exec grep -l impl.*ThreadStore {})",
+      "Bash(timeout 60 /mnt/workspace/coding-agent/target/release/coding-agent)",
+      "Bash(timeout 90 bash -c \"echo \"\"list current directory\"\" | cargo run --quiet 2>&1\")",
+      "Bash(cargo clippy:*)"
     ]
   }
 }
