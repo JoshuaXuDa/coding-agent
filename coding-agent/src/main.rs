@@ -19,7 +19,7 @@ use tirea_agentos::AgentOs;
 use tirea::contracts::AgentEvent;
 use llm_logger::LlmLogger;
 use std::time::Instant;
-use rustyline::Editor;
+use rustyline::{Editor, error::ReadlineError};
 
 
 /// Maximum number of inference rounds
@@ -87,7 +87,9 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
     let mut logger = LlmLogger::new()?;
     println!("📝 LLM interaction logging enabled (logs/llm_interactions.log)");
     println!();
-    println!("💡 提示: 输入 @ 后按 Tab 键可以自动补全文件名");
+    println!("💡 提示:");
+    println!("   - 输入 @ 进入 TUI 文件选择器");
+    println!("   - 或输入 @ 后按 Tab 键自动补全");
     println!();
 
     loop {
@@ -115,11 +117,40 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
             continue;
         }
 
-        // Save to history
+        // Check if input ends with @ to trigger TUI file selector
+        let final_input = if input.ends_with('@') {
+            let fs = crate::platform::create_filesystem();
+            let mut selector = ui::TuiFileSelector::new(fs);
+
+            // Search for files (empty pattern to show all)
+            if let Err(e) = selector.search("") {
+                eprintln!("⚠️  文件搜索失败: {}", e);
+                input.to_string()
+            } else {
+                match selector.run() {
+                    Ok(Some(selected_file)) => {
+                        // User selected a file, append it to @
+                        format!("{}{}", input, selected_file.display())
+                    }
+                    Ok(None) => {
+                        // User cancelled, remove the @
+                        input[..input.len()-1].to_string()
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️  TUI 错误: {}", e);
+                        input.to_string()
+                    }
+                }
+            }
+        } else {
+            input.to_string()
+        };
+
+        // Save original input to history
         rl.add_history_entry(input);
 
         // Handle exit commands
-        if matches!(input, "exit" | "quit" | "q") {
+        if matches!(final_input.as_str(), "exit" | "quit" | "q") {
             println!("👋 Goodbye!");
             break;
         }
@@ -129,18 +160,18 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
         println!("🔄 Processing...");
 
         // Preprocess: Expand @ file references
-        // Non-interactive mode since rustyline provides completion during input
+        // Non-interactive mode since TUI provides selection during input
         let enhanced_message = match context::ContextBuilder::new()
             .with_filesystem(crate::platform::create_filesystem())
             .with_interactive_mode(false)
-            .build_context(input)
+            .build_context(&final_input)
             .await
         {
             Ok(enhanced) => enhanced,
             Err(e) => {
                 println!("⚠️  上下文构建失败: {}", e);
                 println!("使用原始消息继续...");
-                input.to_string()
+                final_input.clone()
             }
         };
 
