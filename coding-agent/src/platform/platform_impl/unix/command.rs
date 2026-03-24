@@ -25,24 +25,17 @@ impl UnixCommandExecutor {
 
     /// Check if a command exists in PATH
     fn command_exists(command: &str) -> bool {
-        // Try to execute with --version or --help to check if it exists
-        let result = Command::new(command)
-            .arg("--version")
+        // Use which command to check if command exists in PATH
+        // This is more reliable than directly executing the command, as it
+        // properly handles the PATH environment variable
+        let result = Command::new("sh")
+            .arg("-c")
+            .arg(format!("which {}", command))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
 
-        // Also try with -h (some commands use -h instead of --version)
-        if result.is_err() {
-            let result = Command::new(command)
-                .arg("-h")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-            result.is_ok()
-        } else {
-            result.is_ok()
-        }
+        result.map(|status| status.success()).unwrap_or(false)
     }
 }
 
