@@ -51,7 +51,9 @@ impl CommandExecutor for UnixCommandExecutor {
         let start = std::time::Instant::now();
 
         // Build the command
-        let mut cmd = TokioCommand::new(&request.command);
+        // Use /usr/bin/env to ensure command is found in PATH
+        let mut cmd = TokioCommand::new("/usr/bin/env");
+        cmd.arg(&request.command);
         cmd.args(&request.args);
 
         // Set working directory if specified
