@@ -21,7 +21,7 @@ impl FileSelector {
         let mut stdout = io::stdout();
 
         loop {
-            print("> ");
+            print!("> ");
             stdout.flush()?;
 
             let mut input = String::new();

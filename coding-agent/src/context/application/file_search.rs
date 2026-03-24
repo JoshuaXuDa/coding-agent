@@ -64,7 +64,10 @@ impl FileSearchCoordinator {
 
         // Sort candidates by relevance (prefer closer matches)
         candidates.sort_by_key(|p| {
-            let name = p.file_name().to_string_lossy().to_string();
+            let name = p.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
             // Exact match gets highest priority
             if name == *pattern {
                 0
