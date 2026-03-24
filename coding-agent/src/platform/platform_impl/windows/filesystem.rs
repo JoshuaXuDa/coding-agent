@@ -125,6 +125,12 @@ impl FileSystem for WindowsFileSystem {
         Ok(content)
     }
 
+    async fn read_file_binary(&self, path: &Path) -> Result<Vec<u8>> {
+        let content = fs::read(path)
+            .context(format!("Failed to read file as binary: {}", path.display()))?;
+        Ok(content)
+    }
+
     async fn write_file(&self, path: &Path, content: &str) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {

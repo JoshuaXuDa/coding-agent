@@ -72,6 +72,13 @@ pub trait FileSystem: Send + Sync {
     /// - Returns error if content is not valid UTF-8
     async fn read_file(&self, path: &Path) -> Result<String>;
 
+    /// Read file contents as raw bytes
+    ///
+    /// # Errors
+    /// - Returns error if file doesn't exist
+    /// - Returns error if file is not readable
+    async fn read_file_binary(&self, path: &Path) -> Result<Vec<u8>>;
+
     /// Write content to a file
     ///
     /// Creates the file if it doesn't exist.

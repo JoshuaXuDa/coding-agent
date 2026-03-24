@@ -160,11 +160,16 @@ impl XmlBuilder {
     /// Build file content XML
     ///
     /// Creates XML output for the read tool.
-    pub fn build_file_content_xml(path: &str, content: &str, offset: Option<usize>, limit: Option<usize>) -> Result<String> {
+    pub fn build_file_content_xml(path: &str, content: &str, offset: Option<usize>, limit: Option<usize>, total_lines: Option<usize>) -> Result<String> {
         let mut content_xml = String::new();
 
         // File element
         content_xml.push_str(&format!("<file path=\"{}\">", escape_xml(path)));
+
+        // Total line count if available
+        if let Some(total) = total_lines {
+            content_xml.push_str(&format!("<total_lines>{}</total_lines>", total));
+        }
 
         // Offset/limit if specified
         if offset.is_some() || limit.is_some() {
@@ -187,8 +192,16 @@ impl XmlBuilder {
         content_xml.push_str("</file>");
 
         // Summary
-        let lines = content.lines().count();
-        let summary = format!("Read {} lines ({} bytes)", lines, content.len());
+        let lines_read = content.lines().count();
+        let summary = if let Some(total) = total_lines {
+            if total == lines_read {
+                format!("Read {} lines ({} bytes)", lines_read, content.len())
+            } else {
+                format!("Read {} of {} lines ({} bytes)", lines_read, total, content.len())
+            }
+        } else {
+            format!("Read {} lines ({} bytes)", lines_read, content.len())
+        };
 
         Self::build_success("read", &content_xml, &summary)
     }
@@ -337,6 +350,154 @@ impl XmlBuilder {
 
         Self::build_success("stat", &content, &summary)
     }
+
+    /// Build PDF file XML
+    ///
+    /// Creates XML output for PDF files with text extraction and optional base64.
+    pub fn build_pdf_xml(path: &str, text_content: &str, base64_content: Option<&str>, metadata: &PdfMetadata) -> Result<String> {
+        let mut content_xml = String::new();
+
+        // File element with type
+        content_xml.push_str(&format!("<file path=\"{}\" type=\"pdf\">", escape_xml(path)));
+
+        // PDF metadata
+        content_xml.push_str("<metadata>");
+        if let Some(pages) = metadata.pages {
+            content_xml.push_str(&format!("<pages>{}</pages>", pages));
+        }
+        if let Some(title) = &metadata.title {
+            content_xml.push_str(&format!("<title>{}</title>", escape_xml(title)));
+        }
+        if let Some(author) = &metadata.author {
+            content_xml.push_str(&format!("<author>{}</author>", escape_xml(author)));
+        }
+        content_xml.push_str("</metadata>");
+
+        // Text content
+        content_xml.push_str(&format!("<content>{}</content>", escape_xml(text_content)));
+
+        // Base64 content if available
+        if let Some(base64) = base64_content {
+            content_xml.push_str(&format!("<content encoding=\"base64\">{}</content>", base64));
+        } else if metadata.size > 1_048_576 {
+            content_xml.push_str("<note>Base64 encoding skipped due to size (> 1MB)</note>");
+        }
+
+        content_xml.push_str(&format!("<size>{}</size>", metadata.size));
+        content_xml.push_str("</file>");
+
+        // Summary
+        let summary = if let Some(pages) = metadata.pages {
+            format!("PDF document ({} pages, {} bytes)", pages, metadata.size)
+        } else {
+            format!("PDF document ({} bytes)", metadata.size)
+        };
+
+        Self::build_success("read", &content_xml, &summary)
+    }
+
+    /// Build image file XML
+    ///
+    /// Creates XML output for image files with base64 encoding and metadata.
+    pub fn build_image_xml(path: &str, base64_content: &str, metadata: &ImageMetadata) -> Result<String> {
+        let mut content_xml = String::new();
+
+        // File element with type
+        content_xml.push_str(&format!("<file path=\"{}\" type=\"image\">", escape_xml(path)));
+
+        // Image metadata
+        content_xml.push_str("<metadata>");
+        content_xml.push_str(&format!("<format>{}</format>", escape_xml(&metadata.format)));
+        if let Some(width) = metadata.width {
+            content_xml.push_str(&format!("<width>{}</width>", width));
+        }
+        if let Some(height) = metadata.height {
+            content_xml.push_str(&format!("<height>{}</height>", height));
+        }
+        if let Some(color_type) = &metadata.color_type {
+            content_xml.push_str(&format!("<color_type>{}</color_type>", escape_xml(color_type)));
+        }
+        if let Some(has_alpha) = metadata.has_alpha {
+            content_xml.push_str(&format!("<has_alpha>{}</has_alpha>", has_alpha));
+        }
+        content_xml.push_str("</metadata>");
+
+        // Base64 content
+        content_xml.push_str(&format!("<content encoding=\"base64\">{}</content>", base64_content));
+
+        content_xml.push_str(&format!("<size>{}</size>", metadata.size));
+        content_xml.push_str("</file>");
+
+        // Summary
+        let summary = if let (Some(w), Some(h)) = (metadata.width, metadata.height) {
+            format!("Image file ({}x{}, {})", w, h, metadata.format)
+        } else {
+            format!("Image file ({})", metadata.format)
+        };
+
+        Self::build_success("read", &content_xml, &summary)
+    }
+
+    /// Build binary file XML
+    ///
+    /// Creates XML output for binary files with base64 encoding.
+    pub fn build_binary_xml(path: &str, base64_content: &str, size: usize) -> Result<String> {
+        let content = format!(
+            "<file path=\"{}\" type=\"binary\">\
+                <content encoding=\"base64\">{}</content>\
+                <size>{}</size>\
+                <encoding>base64</encoding>\
+            </file>",
+            escape_xml(path),
+            base64_content,
+            size
+        );
+
+        let summary = format!("Binary file ({} bytes, base64 encoded)", size);
+
+        Self::build_success("read", &content, &summary)
+    }
+
+    /// Build error for file too large for base64 encoding
+    ///
+    /// Creates an error response when a binary file is too large.
+    pub fn build_binary_too_large_error(path: &str, size: usize, preview: &str) -> Result<String> {
+        let details = format!(
+            "File type: application/octet-stream\n\
+             Size: {} bytes\n\
+             Recommendation: Use specific file handler or process in chunks\n\
+             Preview: {}",
+            size,
+            preview
+        );
+
+        Self::build_error(
+            "read",
+            "FILE_TOO_LARGE_FOR_BASE64",
+            &format!("Binary file too large for base64 encoding: {}", path),
+            &details,
+        )
+    }
+}
+
+/// PDF metadata
+#[derive(Debug, Clone, Default)]
+pub struct PdfMetadata {
+    pub pages: Option<u32>,
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub size: usize,
+}
+
+/// Image metadata
+#[derive(Debug, Clone, Default)]
+pub struct ImageMetadata {
+    pub format: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub color_type: Option<String>,
+    pub has_alpha: Option<bool>,
+    pub size: usize,
 }
 
 /// Grep match value object
@@ -424,8 +585,9 @@ mod tests {
 
     #[test]
     fn test_build_file_content_xml() {
-        let xml = XmlBuilder::build_file_content_xml("/tmp/test.txt", "Hello, World!", None, None).unwrap();
+        let xml = XmlBuilder::build_file_content_xml("/tmp/test.txt", "Hello, World!", None, None, Some(1)).unwrap();
         assert!(xml.contains("<file path=\"/tmp/test.txt\">"));
+        assert!(xml.contains("<total_lines>1</total_lines>"));
         assert!(xml.contains("<content>Hello, World!</content>"));
         assert!(xml.contains("<size>13</size>"));
     }

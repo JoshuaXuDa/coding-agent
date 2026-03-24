@@ -9,6 +9,7 @@ pub mod file_operations;
 pub mod permissions;
 pub mod concurrency;
 pub mod async_bridge;
+pub mod file_type;
 
 pub use validation::*;
 pub use xml_builder::*;
@@ -17,3 +18,4 @@ pub use file_operations::*;
 pub use permissions::*;
 pub use concurrency::*;
 pub use async_bridge::*;
+pub use file_type::*;

@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use crate::platform::domain::filesystem::{FileMetadata, FileType, FileSystem};
 use std::fs;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 /// Unix file system implementation
@@ -95,6 +95,12 @@ impl FileSystem for UnixFileSystem {
     async fn read_file(&self, path: &Path) -> Result<String> {
         let content = fs::read_to_string(path)
             .context(format!("Failed to read file: {}", path.display()))?;
+        Ok(content)
+    }
+
+    async fn read_file_binary(&self, path: &Path) -> Result<Vec<u8>> {
+        let content = fs::read(path)
+            .context(format!("Failed to read file as binary: {}", path.display()))?;
         Ok(content)
     }
 
