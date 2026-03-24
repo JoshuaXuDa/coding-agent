@@ -17,6 +17,8 @@ pub enum TuiEvent {
     AgentToolDone { name: String },
     /// Agent error
     AgentError(String),
+    /// Agent response completed
+    AgentResponseComplete,
     /// Tick event for periodic updates
     Tick,
 }

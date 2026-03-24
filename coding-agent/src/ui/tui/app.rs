@@ -173,19 +173,10 @@ impl TuiApp {
             KeyCode::Char('c') => {
                 // Could be Ctrl+C, handled by crossterm
             }
-            KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete => {
-                // User is typing, update status
-                self.input_status.set_status(InputStatus::Typing);
-                // Pass to input widget
-                if self.input.handle_key_event(key) {
-                    // User wants to send the message
-                    self.send_message();
-                }
-            }
             _ => {
-                // Pass to input widget
+                // Pass to input widget for all other keys
                 if self.input.handle_key_event(key) {
-                    // User wants to send the message
+                    // User wants to send the message (only happens on Enter)
                     self.send_message();
                 }
             }
@@ -196,6 +187,15 @@ impl TuiApp {
     fn handle_tui_event(&mut self, event: TuiEvent) {
         match event {
             TuiEvent::AgentText(delta) => {
+                // 只在非空时打印日志
+                if !delta.is_empty() && delta != "\n" {
+                    eprintln!("📝 收到文本: {}", delta.escape_debug());
+                }
+                // 过滤掉单独的空行（如果响应为空）
+                if delta == "\n" && self.current_response.is_empty() {
+                    return;
+                }
+
                 self.current_response.push_str(&delta);
                 self.status.set_streaming(true);
             }
@@ -220,10 +220,43 @@ impl TuiApp {
                 self.status.set_status("Ready");
             }
             TuiEvent::AgentError(err) => {
+                // 如果有流式响应，先保存
+                if !self.current_response.is_empty() {
+                    self.messages.push(ChatMessage::Assistant {
+                        content: self.current_response.clone(),
+                    });
+                    self.current_response = String::new();
+                }
+
+                // 添加错误消息
                 self.messages.push(ChatMessage::System {
-                    content: format!("Error: {}", err),
+                    content: format!("❌ 错误: {}", err),
                 });
+
+                self.status.set_streaming(false);
                 self.status.set_status("Error");
+            }
+            TuiEvent::AgentResponseComplete => {
+                eprintln!("✅ 收到 AgentResponseComplete");
+                eprintln!("  -> 当前响应长度: {}", self.current_response.len());
+
+                // 将流式响应保存为正式消息
+                if !self.current_response.is_empty() {
+                    eprintln!("  -> 保存响应到消息列表");
+                    self.messages.push(ChatMessage::Assistant {
+                        content: self.current_response.clone(),
+                    });
+                    self.current_response = String::new();
+                } else {
+                    eprintln!("  -> 响应为空，不保存");
+                }
+
+                // 更新状态
+                eprintln!("  -> 更新状态: streaming=false, status=Sent");
+                self.status.set_streaming(false);
+                self.input_status.set_status(InputStatus::Sent);
+
+                eprintln!("  -> 当前消息数量: {}", self.messages.len());
             }
             TuiEvent::Tick => {
                 // Periodic updates
@@ -239,8 +272,11 @@ impl TuiApp {
         let text = self.input.text().trim().to_string();
 
         if text.is_empty() {
+            eprintln!("❌ 消息为空，不发送");
             return;
         }
+
+        eprintln!("📤 发送消息: {}", text);
 
         // Set sending status
         self.input_status.set_status(InputStatus::Sending);
@@ -257,12 +293,15 @@ impl TuiApp {
         let event_tx = self.event_tx.clone();
         let message = text;
 
+        eprintln!("🚀 启动 agent 任务");
+
         tokio::spawn(async move {
             use tirea::prelude::Message;
             use tirea_contract::RunRequest;
             use futures::StreamExt;
             use tirea::contracts::AgentEvent;
 
+            eprintln!("📝 创建 run_request");
             let run_request = RunRequest {
                 agent_id: "coding-agent".to_string(),
                 thread_id: None,
@@ -276,36 +315,52 @@ impl TuiApp {
                 initial_decisions: vec![],
             };
 
+            eprintln!("⏳ 调用 agent_os.run_stream");
             match agent_os.run_stream(run_request).await {
                 Ok(mut stream) => {
+                    eprintln!("✅ Stream 创建成功，开始接收事件");
+                    let mut event_count = 0;
                     while let Some(event) = stream.events.next().await {
+                        event_count += 1;
+
                         match event {
                             AgentEvent::TextDelta { delta, .. } => {
+                                eprintln!("📨 [#{}] TextDelta: {}", event_count, delta.escape_debug());
+                                let _ = event_tx.send(TuiEvent::AgentText(delta));
+                            }
+                            AgentEvent::ReasoningDelta { delta, .. } => {
+                                // ReasoningDelta 也是文本的一部分，像 TextDelta 一样处理
+                                eprintln!("🧠 [#{}] ReasoningDelta: {}", event_count, delta.escape_debug());
                                 let _ = event_tx.send(TuiEvent::AgentText(delta));
                             }
                             AgentEvent::ToolCallStart { name, .. } => {
+                                eprintln!("🔧 [#{}] ToolCallStart: {}", event_count, name);
                                 let _ = event_tx.send(TuiEvent::AgentToolCall {
                                     name: name.clone(),
                                     input: serde_json::json!({}),
                                 });
                             }
                             AgentEvent::ToolCallDone { .. } => {
+                                eprintln!("✅ [#{}] ToolCallDone", event_count);
                                 let _ = event_tx.send(TuiEvent::AgentToolDone {
                                     name: "tool".to_string(),
                                 });
                             }
                             AgentEvent::Error { message, .. } => {
+                                eprintln!("❌ [#{}] Error: {}", event_count, message);
                                 let _ = event_tx.send(TuiEvent::AgentError(message));
                             }
-                            _ => {}
+                            _ => {
+                                eprintln!("❓ [#{}] 未知事件类型: {:?}", event_count, std::mem::discriminant(&event));
+                            }
                         }
                     }
 
-                    // Add the completed response
-                    let _ = event_tx.send(TuiEvent::AgentText("\n".to_string()));
+                    eprintln!("🏁 Stream 结束，总共收到 {} 个事件", event_count);
 
-                    // Send success notification
-                    let _ = event_tx.send(TuiEvent::AgentText("✓".to_string()));
+                    // Send response complete event
+                    eprintln!("📤 发送 AgentResponseComplete 事件");
+                    let _ = event_tx.send(TuiEvent::AgentResponseComplete);
                 }
                 Err(e) => {
                     let _ = event_tx.send(TuiEvent::AgentError(e.to_string()));
