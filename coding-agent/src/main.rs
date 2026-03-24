@@ -9,6 +9,8 @@ mod behaviors;
 mod config;
 mod llm_logger;
 mod platform;
+mod context;
+mod ui;
 
 use std::io::{self, BufRead, Write};
 
@@ -101,7 +103,21 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
         println!();
         println!("🔄 Processing...");
 
-        match process_message(&agent_os, input.to_string(), &mut logger).await {
+        // Preprocess: Expand @ file references
+        let enhanced_message = match context::ContextBuilder::new()
+            .with_filesystem(crate::platform::create_filesystem())
+            .build_context(&input)
+            .await
+        {
+            Ok(enhanced) => enhanced,
+            Err(e) => {
+                println!("⚠️  上下文构建失败: {}", e);
+                println!("使用原始消息继续...");
+                input
+            }
+        };
+
+        match process_message(&agent_os, enhanced_message, &mut logger).await {
             Ok(response) => {
                 println!();
                 println!("═══════════════════════════════════════════════════════════");
