@@ -8,6 +8,7 @@ use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
 use rustyline::hint::Hinter;
 use rustyline::validate::Validator;
 use rustyline::{Helper, Context};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 /// rustyline helper that enables @ file reference autocompletion
@@ -46,8 +47,9 @@ impl Hinter for FileReferenceHelper {
 }
 
 impl Highlighter for FileReferenceHelper {
-    fn highlight<'l>(&self, line: &'l str, pos: usize) -> rustyline::HighlightedText<'l> {
-        self.bracket_highlighter.highlight(line, pos)
+    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
+        // Just return the line as-is
+        Cow::Borrowed(line)
     }
 
     fn highlight_char(&self, line: &str, pos: usize, force: bool) -> bool {

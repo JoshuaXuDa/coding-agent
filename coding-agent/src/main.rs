@@ -20,6 +20,7 @@ use tirea::contracts::AgentEvent;
 use llm_logger::LlmLogger;
 use std::time::Instant;
 use rustyline::{Editor, error::ReadlineError};
+use ui::TuiApp;
 
 
 /// Maximum number of inference rounds
@@ -61,13 +62,21 @@ async fn main() -> anyhow::Result<()> {
     println!("✅ AgentOS initialized successfully");
     println!();
     println!("═══════════════════════════════════════════════════════════");
-    println!("  CodingAgent Ready - Type your message below");
+    println!("  Starting TUI Mode...");
     println!("═══════════════════════════════════════════════════════════");
     println!();
 
-    // Run CLI mode
-    run_cli_mode(agent_os).await
+    // Run TUI mode
+    run_tui_mode(agent_os).await
 }
+
+/// Run the agent in TUI mode
+async fn run_tui_mode(agent_os: AgentOs) -> anyhow::Result<()> {
+    let mut app = TuiApp::new(agent_os)?;
+    app.run().await
+}
+
+/// Run the agent in CLI mode with readline support (legacy)
 
 /// Run the agent in CLI mode with readline support
 async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {

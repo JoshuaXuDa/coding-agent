@@ -3,7 +3,6 @@
 use crate::platform::domain::filesystem::FileSystem;
 use glob::glob;
 use rustyline::completion::{Completer, Pair};
-use rustyline::error::Result as RustylineResult;
 use rustyline::Context;
 use std::sync::Arc;
 
@@ -60,7 +59,7 @@ impl Completer for FileReferenceCompleter {
         line: &str,
         pos: usize,
         _ctx: &Context<'_>,
-    ) -> RustylineResult<(usize, Vec<Pair>)> {
+    ) -> std::result::Result<(usize, Vec<Pair>), rustyline::error::ReadlineError> {
         // Check if cursor is after an @ symbol
         let before_cursor = &line[..pos];
 
