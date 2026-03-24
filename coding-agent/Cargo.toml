@@ -37,6 +37,9 @@ infer = "0.15"
 lopdf = "0.31"
 base64 = "0.22"
 
+# Interactive readline and autocompletion
+rustyline = "13"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_Storage_FileSystem"] }
 

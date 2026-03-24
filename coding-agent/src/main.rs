@@ -12,13 +12,14 @@ mod platform;
 mod context;
 mod ui;
 
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 
 use tools::build_tool_map;
 use tirea_agentos::AgentOs;
 use tirea::contracts::AgentEvent;
 use llm_logger::LlmLogger;
 use std::time::Instant;
+use rustyline::Editor;
 
 
 /// Maximum number of inference rounds
@@ -68,33 +69,57 @@ async fn main() -> anyhow::Result<()> {
     run_cli_mode(agent_os).await
 }
 
-/// Run the agent in CLI mode (stdin/stdout)
+/// Run the agent in CLI mode with readline support
 async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
+    // Initialize readline editor with file reference completion
+    let fs = crate::platform::create_filesystem();
+    let helper = ui::FileReferenceHelper::new(fs);
+    let mut rl = Editor::new()?;
+    rl.set_helper(Some(helper));
+
+    // Load command history
+    let history_path = ".coding_agent_history";
+    if let Err(_) = rl.load_history(history_path) {
+        println!("📝 No previous history found, starting fresh");
+    }
 
     // Initialize LLM logger
     let mut logger = LlmLogger::new()?;
     println!("📝 LLM interaction logging enabled (logs/llm_interactions.log)");
     println!();
+    println!("💡 提示: 输入 @ 后按 Tab 键可以自动补全文件名");
+    println!();
 
     loop {
-        // Display prompt
-        print!("You> ");
-        stdout.flush()?;
+        // Read user input with readline support
+        let input = match rl.readline("You> ") {
+            Ok(line) => line,
+            Err(ReadlineError::Interrupted) => {
+                println!("^C");
+                continue;
+            }
+            Err(ReadlineError::Eof) => {
+                println!("👋 Goodbye!");
+                break;
+            }
+            Err(err) => {
+                println!("❌ Error reading input: {}", err);
+                break;
+            }
+        };
 
-        // Read user input - handle invalid UTF-8 gracefully
-        let mut input_bytes = Vec::new();
-        stdin.lock().read_until(b'\n', &mut input_bytes)?;
-        let input = String::from_utf8_lossy(&input_bytes).trim_end().to_string();
+        let input = input.trim();
 
         // Handle empty input
         if input.is_empty() {
             continue;
         }
 
+        // Save to history
+        rl.add_history_entry(input);
+
         // Handle exit commands
-        if matches!(input.as_str(), "exit" | "quit" | "q") {
+        if matches!(input, "exit" | "quit" | "q") {
             println!("👋 Goodbye!");
             break;
         }
@@ -104,16 +129,18 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
         println!("🔄 Processing...");
 
         // Preprocess: Expand @ file references
+        // Non-interactive mode since rustyline provides completion during input
         let enhanced_message = match context::ContextBuilder::new()
             .with_filesystem(crate::platform::create_filesystem())
-            .build_context(&input)
+            .with_interactive_mode(false)
+            .build_context(input)
             .await
         {
             Ok(enhanced) => enhanced,
             Err(e) => {
                 println!("⚠️  上下文构建失败: {}", e);
                 println!("使用原始消息继续...");
-                input
+                input.to_string()
             }
         };
 
@@ -136,6 +163,11 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
         // Flush logger after each message
         let _ = logger.flush();
         println!();
+    }
+
+    // Save history before exiting
+    if let Err(err) = rl.save_history(history_path) {
+        eprintln!("⚠️  Failed to save history: {}", err);
     }
 
     Ok(())
