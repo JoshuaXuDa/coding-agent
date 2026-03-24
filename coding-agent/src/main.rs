@@ -158,13 +158,48 @@ async fn process_message(
     let mut stream = agent_os.run_stream(run_request).await?;
 
     let mut final_response = String::new();
+    let mut incomplete_utf8_bytes = Vec::new(); // Buffer for incomplete UTF-8 sequences
     use futures::StreamExt;
+
     while let Some(event) = stream.events.next().await {
         match event {
             AgentEvent::TextDelta { delta, .. } => {
-                print!("{}", delta);
-                let _ = io::stdout().flush();
-                final_response.push_str(&delta);
+                // Handle potential incomplete UTF-8 sequences in streaming
+                let mut bytes = delta.as_bytes().to_vec();
+
+                // If we have incomplete bytes from previous chunk, prepend them
+                if !incomplete_utf8_bytes.is_empty() {
+                    incomplete_utf8_bytes.append(&mut bytes);
+                    bytes = incomplete_utf8_bytes.clone();
+                }
+
+                // Try to convert to UTF-8
+                match String::from_utf8(bytes) {
+                    Ok(text) => {
+                        // Complete UTF-8 sequence, print and store
+                        print!("{}", text);
+                        let _ = io::stdout().flush();
+                        final_response.push_str(&text);
+                        incomplete_utf8_bytes.clear();
+                    }
+                    Err(err) => {
+                        // Incomplete UTF-8 sequence
+                        let valid_len = err.utf8_error().valid_up_to();
+
+                        if valid_len > 0 {
+                            // We have some valid bytes at the beginning
+                            let valid_bytes = &err.as_bytes()[..valid_len];
+                            if let Ok(text) = String::from_utf8(valid_bytes.to_vec()) {
+                                print!("{}", text);
+                                let _ = io::stdout().flush();
+                                final_response.push_str(&text);
+                            }
+                        }
+
+                        // Store incomplete bytes for next chunk
+                        incomplete_utf8_bytes = err.as_bytes()[valid_len..].to_vec();
+                    }
+                }
             }
             AgentEvent::ToolCallStart { name, .. } => {
                 println!("\n[Calling tool: {}]", name);
@@ -177,12 +212,29 @@ async fn process_message(
             AgentEvent::Error { message, .. } => {
                 eprintln!("ERROR: {}", message);
                 let _ = logger.log_error(&message);
+
+                // Try to output any remaining incomplete bytes as lossy UTF-8
+                if !incomplete_utf8_bytes.is_empty() {
+                    let lossy = String::from_utf8_lossy(&incomplete_utf8_bytes);
+                    print!("{}", lossy);
+                    let _ = io::stdout().flush();
+                    final_response.push_str(&lossy);
+                }
+
                 return Err(anyhow::anyhow!("Agent error: {}", message));
             }
             _ => {
                 // Ignore other events
             }
         }
+    }
+
+    // Handle any remaining incomplete bytes at the end of stream
+    if !incomplete_utf8_bytes.is_empty() {
+        let lossy = String::from_utf8_lossy(&incomplete_utf8_bytes);
+        print!("{}", lossy);
+        let _ = io::stdout().flush();
+        final_response.push_str(&lossy);
     }
 
     let duration = start_time.elapsed().as_millis() as u64;
