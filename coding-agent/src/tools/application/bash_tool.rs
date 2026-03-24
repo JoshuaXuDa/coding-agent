@@ -30,19 +30,51 @@ impl BashTool {
 
     /// Parse tool arguments
     fn parse_args(args: &serde_json::Value) -> Result<BashArgs> {
-        let command = args
+        let command_str = args
             .get("command")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'command' argument"))?;
 
+        // Smart parsing: if command contains spaces and args array is empty/missing,
+        // split the command into command and args
+        let (command, args_list) = if command_str.contains(' ') {
+            let parts: Vec<&str> = command_str.split_whitespace().collect();
+            let cmd = parts.first()
+                .ok_or_else(|| anyhow::anyhow!("Command cannot be empty"))?;
+
+            // Check if args were explicitly provided
+            let has_explicit_args = args.get("args")
+                .and_then(|v| v.as_array())
+                .map(|arr| !arr.is_empty())
+                .unwrap_or(false);
+
+            if has_explicit_args {
+                // User provided both command with spaces AND explicit args
+                // Use explicit args
+                let explicit_args: Vec<String> = args.get("args")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                (*cmd, explicit_args)
+            } else {
+                // Auto-split: "git status" -> command="git", args=["status"]
+                let auto_args: Vec<String> = parts.iter().skip(1).map(|s| s.to_string()).collect();
+                (*cmd, auto_args)
+            }
+        } else {
+            // No spaces in command, use as-is
+            let explicit_args: Vec<String> = args.get("args")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            (command_str, explicit_args)
+        };
+
         // Validate command for security
         validate_command(command)?;
 
-        let args_list: Vec<String> = args
-            .get("args")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-            .unwrap_or_default();
+        // Validate command arguments
+        validate_command_args(&args_list)?;
 
         // Validate command arguments
         validate_command_args(&args_list)?;
