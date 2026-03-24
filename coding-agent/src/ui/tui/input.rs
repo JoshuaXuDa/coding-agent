@@ -88,12 +88,13 @@ impl InputWidget {
 
         match key_event.code {
             KeyCode::Enter => {
-                if key_event.modifiers.contains(KeyModifiers::CONTROL) {
-                    // Ctrl+Enter to send
+                if key_event.modifiers.contains(KeyModifiers::SHIFT) {
+                    // Shift+Enter for newline
+                    self.textarea.insert_newline();
+                } else {
+                    // Enter to send (mainstream UX)
                     self.ready_to_send = true;
                     return true;
-                } else {
-                    self.textarea.insert_newline();
                 }
             }
             KeyCode::Char(c) => {
@@ -132,16 +133,23 @@ impl InputWidget {
     /// Render the input widget
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let title = if self.mode == InputMode::FileSelector {
-            "Input (File Selector Active) - Ctrl+Enter to Send"
+            "📁 选择文件 | ESC 取消"
         } else {
-            "Input - Ctrl+Enter to Send | ESC to Cancel"
+            "💬 输入消息 | Enter 发送 | Shift+Enter 换行 | ESC 退出"
+        };
+
+        // 根据输入状态改变边框颜色
+        let border_color = if self.text().trim().is_empty() {
+            Color::Gray
+        } else {
+            Color::Cyan  // 有输入时显示青色边框
         };
 
         // Create the block
         let block = Block::default()
             .borders(Borders::ALL)
             .title(title)
-            .border_style(Style::default().fg(Color::Cyan));
+            .border_style(Style::default().fg(border_color));
 
         // Render the block first
         let inner_area = block.inner(area);

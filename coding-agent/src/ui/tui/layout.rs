@@ -13,19 +13,22 @@ pub struct LayoutAreas {
     pub conversation: Rect,
     /// Input area
     pub input: Rect,
+    /// Input status indicator area
+    pub input_status: Rect,
     /// Status bar area
     pub status: Rect,
 }
 
 /// Calculate layout areas for the given terminal size
 pub fn calculate_layout(size: Rect) -> LayoutAreas {
-    // Vertical layout with title, conversation, input, status
+    // Vertical layout with title, conversation, input, input status, status
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),  // Title bar
             Constraint::Min(10),    // Conversation (flexible)
             Constraint::Length(3),  // Input
+            Constraint::Length(1),  // Input status
             Constraint::Length(1),  // Status bar
         ])
         .split(size);
@@ -34,6 +37,7 @@ pub fn calculate_layout(size: Rect) -> LayoutAreas {
         title: chunks[0],
         conversation: chunks[1],
         input: chunks[2],
-        status: chunks[3],
+        input_status: chunks[3],
+        status: chunks[4],
     }
 }

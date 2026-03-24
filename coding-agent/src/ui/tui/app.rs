@@ -6,6 +6,7 @@ use crate::ui::tui::{
     conversation::ChatMessage,
     events::{TuiEvent, ToolStatus},
     input::{InputMode, InputWidget},
+    input_status::{InputStatus, InputStatusIndicator},
     layout::calculate_layout,
     status_bar::StatusBar,
 };
@@ -39,6 +40,8 @@ pub struct TuiApp {
     current_response: String,
     /// Input widget
     input: InputWidget,
+    /// Input status indicator
+    input_status: InputStatusIndicator,
     /// Status bar
     status: StatusBar,
     /// Scroll offset for conversation
@@ -65,6 +68,7 @@ impl TuiApp {
             messages: Vec::new(),
             current_response: String::new(),
             input: InputWidget::new(),
+            input_status: InputStatusIndicator::new(),
             status: StatusBar::new(),
             scroll_offset: 0,
             event_rx,
@@ -169,6 +173,15 @@ impl TuiApp {
             KeyCode::Char('c') => {
                 // Could be Ctrl+C, handled by crossterm
             }
+            KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete => {
+                // User is typing, update status
+                self.input_status.set_status(InputStatus::Typing);
+                // Pass to input widget
+                if self.input.handle_key_event(key) {
+                    // User wants to send the message
+                    self.send_message();
+                }
+            }
             _ => {
                 // Pass to input widget
                 if self.input.handle_key_event(key) {
@@ -229,6 +242,9 @@ impl TuiApp {
             return;
         }
 
+        // Set sending status
+        self.input_status.set_status(InputStatus::Sending);
+
         // Add user message
         self.messages.push(ChatMessage::User { content: text.clone() });
         self.input.clear();
@@ -287,6 +303,9 @@ impl TuiApp {
 
                     // Add the completed response
                     let _ = event_tx.send(TuiEvent::AgentText("\n".to_string()));
+
+                    // Send success notification
+                    let _ = event_tx.send(TuiEvent::AgentText("✓".to_string()));
                 }
                 Err(e) => {
                     let _ = event_tx.send(TuiEvent::AgentError(e.to_string()));
@@ -310,6 +329,9 @@ impl TuiApp {
 
         // Draw input
         self.input.render(frame, areas.input);
+
+        // Draw input status indicator
+        self.input_status.render(frame, areas.input_status);
 
         // Draw status bar
         self.draw_status_bar(frame, areas.status);
@@ -385,14 +407,25 @@ impl TuiApp {
 
     /// Draw the status bar
     fn draw_status_bar(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        let help_text = "Enter:发送 ↑↓:滚动 ESC:退出";
         let status_text = if self.status.is_streaming {
-            format!("Processing... | Tools: {} | Model: {}", self.status.tool_count, self.status.model)
+            format!("⏳ {} | {} | Tools: {} | Model: {}",
+                help_text,
+                "处理中",
+                self.status.tool_count,
+                self.status.model
+            )
         } else {
-            format!("{} | Tools: {} | Model: {}", self.status.status_message, self.status.tool_count, self.status.model)
+            format!("💡 {} | {} | Tools: {} | Model: {}",
+                help_text,
+                self.status.status_message,
+                self.status.tool_count,
+                self.status.model
+            )
         };
 
         let widget = Paragraph::new(Line::from(vec![
-            Span::styled(status_text, Style::default().fg(Color::Gray)),
+            Span::styled(status_text, Style::default().fg(Color::DarkGray)),
         ]))
         .wrap(Wrap { trim: true });
 
