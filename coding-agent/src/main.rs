@@ -125,7 +125,7 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Process a user message through the agent
+/// Process a user message through the agent with retry on stream errors
 async fn process_message(
     agent_os: &AgentOs,
     message: String,
@@ -151,58 +151,86 @@ async fn process_message(
         initial_decisions: vec![],
     };
 
-    // Start timing
-    let start_time = Instant::now();
+    // Retry logic for stream errors
+    let max_retries = 3;
+    let mut retry_count = 0;
 
-    // Run the agent with streaming output
-    let mut stream = agent_os.run_stream(run_request).await?;
+    loop {
+        // Start timing
+        let start_time = Instant::now();
 
-    let mut final_response = String::new();
-    use futures::StreamExt;
-
-    while let Some(event) = stream.events.next().await {
-        match event {
-            AgentEvent::TextDelta { delta, .. } => {
-                // Direct output - delta is already a String from framework
-                // If UTF-8 error occurs in framework, we'll catch it in Error event
-                print!("{}", delta);
-                let _ = io::stdout().flush();
-                final_response.push_str(&delta);
-            }
-            AgentEvent::ToolCallStart { name, .. } => {
-                println!("\n[Calling tool: {}]", name);
-                // Log tool call (arguments not available in ToolCallStart event)
-                let _ = logger.log_tool_call(&name, &serde_json::json!({}));
-            }
-            AgentEvent::ToolCallDone { .. } => {
-                println!("[Tool done]");
-            }
-            AgentEvent::Error { message, .. } => {
-                // Check if this is a UTF-8 stream error and handle gracefully
-                if message.contains("incomplete utf-8") || message.contains("utf-8") {
-                    eprintln!("⚠️  Warning: UTF-8 encoding issue in stream, continuing...");
-                    eprintln!("   (Some characters may not display correctly)");
-                    let _ = logger.log_error(&format!("UTF-8 error (non-fatal): {}", message));
-                    // Don't return error - continue processing
+        // Run the agent with streaming output
+        let mut stream = match agent_os.run_stream(run_request.clone()).await {
+            Ok(s) => s,
+            Err(e) => {
+                if retry_count < max_retries && e.to_string().contains("utf-8") {
+                    retry_count += 1;
+                    eprintln!("⚠️  UTF-8 stream error, retrying ({}/{})...", retry_count, max_retries);
+                    std::thread::sleep(std::time::Duration::from_millis(500 * retry_count as u64));
                     continue;
                 }
-
-                eprintln!("ERROR: {}", message);
-                let _ = logger.log_error(&message);
-                return Err(anyhow::anyhow!("Agent error: {}", message));
+                return Err(e.into());
             }
-            _ => {
-                // Ignore other events
+        };
+
+        let mut final_response = String::new();
+        let mut stream_error = None;
+        use futures::StreamExt;
+
+        while let Some(event) = stream.events.next().await {
+            match event {
+                AgentEvent::TextDelta { delta, .. } => {
+                    print!("{}", delta);
+                    let _ = io::stdout().flush();
+                    final_response.push_str(&delta);
+                }
+                AgentEvent::ToolCallStart { name, .. } => {
+                    println!("\n[Calling tool: {}]", name);
+                    let _ = logger.log_tool_call(&name, &serde_json::json!({}));
+                }
+                AgentEvent::ToolCallDone { .. } => {
+                    println!("[Tool done]");
+                }
+                AgentEvent::Error { message, .. } => {
+                    if message.contains("incomplete utf-8") || message.contains("utf-8") {
+                        stream_error = Some(message);
+                        break; // Exit the event loop
+                    }
+
+                    eprintln!("ERROR: {}", message);
+                    let _ = logger.log_error(&message);
+                    return Err(anyhow::anyhow!("Agent error: {}", message));
+                }
+                _ => {
+                    // Ignore other events
+                }
             }
         }
+
+        // If we had a UTF-8 stream error and haven't exceeded retries, try again
+        if let Some(err_msg) = stream_error {
+            if retry_count < max_retries {
+                retry_count += 1;
+                eprintln!("⚠️  UTF-8 stream error, retrying ({}/{})...", retry_count, max_retries);
+                std::thread::sleep(std::time::Duration::from_millis(500 * retry_count as u64));
+
+                // Clear any partial output before retry
+                if !final_response.is_empty() {
+                    eprintln!("\n[Partial response received, retrying...]");
+                }
+                continue;
+            } else {
+                eprintln!("⚠️  Max retries reached, returning partial response");
+                // Return what we have instead of error
+            }
+        }
+
+        let duration = start_time.elapsed().as_millis() as u64;
+        println!(); // newline after streaming output
+
+        // Log the response
+        logger.log_response(&final_response, duration)?;
+
+        return Ok(final_response);
     }
-
-    let duration = start_time.elapsed().as_millis() as u64;
-
-    println!(); // newline after streaming output
-
-    // Log the response
-    logger.log_response(&final_response, duration)?;
-
-    Ok(final_response)
 }
