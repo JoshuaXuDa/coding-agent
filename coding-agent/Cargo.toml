@@ -23,12 +23,18 @@ indoc = "2"
 walkdir = "2"
 env_logger = "0.10"
 futures = "0.3"
-genai = "0.6.0-beta.5"
+genai = { version = "0.6.0-beta.10" }
 dotenv = "0.15"
 quick-xml = { version = "0.31", features = ["serialize"] }
 command-group = "5"
 path-clean = "0.1"
 pathdiff = "0.2"
+
+# File type detection and multi-format support
+mime_guess = "2"
+infer = "0.15"
+lopdf = "0.31"
+base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_Storage_FileSystem"] }
