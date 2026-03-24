@@ -41,15 +41,17 @@ impl Completer for FileReferenceHelper {
     }
 }
 
-impl Hinter for FileReferenceHelper {}
+impl Hinter for FileReferenceHelper {
+    type Hint = String;
+}
 
 impl Highlighter for FileReferenceHelper {
     fn highlight<'l>(&self, line: &'l str, pos: usize) -> rustyline::HighlightedText<'l> {
         self.bracket_highlighter.highlight(line, pos)
     }
 
-    fn highlight_char(&self, line: &str, pos: usize) -> bool {
-        self.bracket_highlighter.highlight_char(line, pos)
+    fn highlight_char(&self, line: &str, pos: usize, force: bool) -> bool {
+        self.bracket_highlighter.highlight_char(line, pos, force)
     }
 }
 

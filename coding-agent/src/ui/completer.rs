@@ -5,7 +5,6 @@ use glob::glob;
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::Result as RustylineResult;
 use rustyline::Context;
-use std::path::Path;
 use std::sync::Arc;
 
 /// Auto-completer for @ file references
