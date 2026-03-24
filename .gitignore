@@ -19,6 +19,7 @@ Cargo.lock
 
 # Samples
 samples/
+examples/
 
 # Session and runtime data
 sessions/
