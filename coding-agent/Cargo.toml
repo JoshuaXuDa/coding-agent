@@ -29,6 +29,7 @@ quick-xml = { version = "0.31", features = ["serialize"] }
 command-group = "5"
 path-clean = "0.1"
 pathdiff = "0.2"
+paste = "1.0"
 
 # File type detection and multi-format support
 mime_guess = "2"

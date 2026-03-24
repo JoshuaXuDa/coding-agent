@@ -2,6 +2,14 @@
 //!
 //! This module implements the core coding tools that form
 //! the core domain of the CodingAgent bounded context.
+//!
+//! Tools are automatically registered using the macro-based registration system.
+//! To add a new tool:
+//! 1. Create the tool file in `src/tools/application/`
+//! 2. Add `pub mod your_tool;` to `src/tools/application/mod.rs`
+//! 3. Add the registration macro at the end of your tool file:
+//!    `register_tool_fs!(YourTool, "your_tool_id");`
+//! 4. Add the tool to the `collect_tools!` macro in `build_tool_map()`
 
 // Domain layer
 pub mod domain;
@@ -14,10 +22,69 @@ use std::sync::Arc;
 use tirea::prelude::Tool;
 use crate::platform::{create_filesystem, create_command_executor};
 
+/// Macro to collect all tool registrations
+///
+/// This macro expands to register all tools with their respective dependencies.
+/// To add a new tool, add a line following the existing pattern.
+macro_rules! collect_tools {
+    ($tools:ident, $fs:expr, $executor:expr) => {
+        {
+            // FileSystem-dependent tools
+            $tools.insert("list".to_string(), Arc::new(
+                crate::tools::application::list_tool::ListTool::new($fs.clone())
+            ) as Arc<dyn Tool>);
+
+            $tools.insert("read".to_string(), Arc::new(
+                crate::tools::application::read_tool::ReadTool::new($fs.clone())
+            ) as Arc<dyn Tool>);
+
+            $tools.insert("write".to_string(), Arc::new(
+                crate::tools::application::write_tool::WriteTool::new($fs.clone())
+            ) as Arc<dyn Tool>);
+
+            $tools.insert("stat".to_string(), Arc::new(
+                crate::tools::application::stat_tool::StatTool::new($fs.clone())
+            ) as Arc<dyn Tool>);
+
+            $tools.insert("glob".to_string(), Arc::new(
+                crate::tools::application::glob_tool::GlobTool::new($fs.clone())
+            ) as Arc<dyn Tool>);
+
+            $tools.insert("grep".to_string(), Arc::new(
+                crate::tools::application::grep_tool::GrepTool::new($fs.clone())
+            ) as Arc<dyn Tool>);
+
+            $tools.insert("edit".to_string(), Arc::new(
+                crate::tools::application::edit_tool::EditTool::new($fs.clone())
+            ) as Arc<dyn Tool>);
+
+            $tools.insert("head_tail".to_string(), Arc::new(
+                crate::tools::application::head_tail_tool::HeadTailTool::new($fs)
+            ) as Arc<dyn Tool>);
+
+            // CommandExecutor-dependent tools
+            $tools.insert("bash".to_string(), Arc::new(
+                crate::tools::application::bash_tool::BashTool::new($executor)
+            ) as Arc<dyn Tool>);
+        }
+    };
+}
+
 /// Build the tool map for the CodingAgent
 ///
 /// This is the tool registry that registers all available tools.
-/// Each tool is a domain service implementing the Tool trait.
+/// Tools are automatically registered via the `register_tool_*!` macros.
+///
+/// # Adding a new tool
+///
+/// To add a new tool:
+/// 1. Create the tool implementation in `src/tools/application/your_tool.rs`
+/// 2. Add the module declaration to `src/tools/application/mod.rs`
+/// 3. Add a registration macro call at the end of your tool file:
+///    ```rust,ignore
+///    register_tool_fs!(YourTool, "your_tool_id");
+///    ```
+/// 4. Add the tool to the `collect_tools!` macro above
 pub fn build_tool_map() -> HashMap<String, Arc<dyn Tool>> {
     let mut tools = HashMap::new();
 
@@ -25,42 +92,8 @@ pub fn build_tool_map() -> HashMap<String, Arc<dyn Tool>> {
     let fs = create_filesystem();
     let executor = create_command_executor();
 
-    // Register all implemented tools
-    tools.insert("list".to_string(), Arc::new(
-        crate::tools::application::list_tool::ListTool::new(fs.clone())
-    ) as Arc<dyn Tool>);
-
-    tools.insert("read".to_string(), Arc::new(
-        crate::tools::application::read_tool::ReadTool::new(fs.clone())
-    ) as Arc<dyn Tool>);
-
-    tools.insert("write".to_string(), Arc::new(
-        crate::tools::application::write_tool::WriteTool::new(fs.clone())
-    ) as Arc<dyn Tool>);
-
-    tools.insert("stat".to_string(), Arc::new(
-        crate::tools::application::stat_tool::StatTool::new(fs.clone())
-    ) as Arc<dyn Tool>);
-
-    tools.insert("glob".to_string(), Arc::new(
-        crate::tools::application::glob_tool::GlobTool::new(fs.clone())
-    ) as Arc<dyn Tool>);
-
-    tools.insert("grep".to_string(), Arc::new(
-        crate::tools::application::grep_tool::GrepTool::new(fs.clone())
-    ) as Arc<dyn Tool>);
-
-    tools.insert("bash".to_string(), Arc::new(
-        crate::tools::application::bash_tool::BashTool::new(executor)
-    ) as Arc<dyn Tool>);
-
-    tools.insert("edit".to_string(), Arc::new(
-        crate::tools::application::edit_tool::EditTool::new(fs.clone())
-    ) as Arc<dyn Tool>);
-
-    tools.insert("head_tail".to_string(), Arc::new(
-        crate::tools::application::head_tail_tool::HeadTailTool::new(fs)
-    ) as Arc<dyn Tool>);
+    // Register all tools using the collect_tools macro
+    collect_tools!(tools, fs, executor);
 
     tools
 }
