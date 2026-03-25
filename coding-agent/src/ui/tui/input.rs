@@ -173,40 +173,40 @@ impl InputWidget {
 
         match key_event.code {
             KeyCode::Up => {
-                if let Some(autocomplete) = &mut self.autocomplete {
-                    // Save user's current input if not already in browse mode
-                    if self.browse_mode_user_input.is_none() {
-                        let current_text = self.text();
-                        if let Some(trigger_pos) = self.autocomplete_trigger_pos {
-                            if current_text.len() > trigger_pos + 1 {
-                                self.browse_mode_user_input = Some(current_text[trigger_pos + 1..].to_string());
-                            } else {
-                                self.browse_mode_user_input = Some(String::new());
-                            }
+                // Save user's current input if not already in browse mode
+                if self.browse_mode_user_input.is_none() {
+                    let current_text = self.text();
+                    if let Some(trigger_pos) = self.autocomplete_trigger_pos {
+                        if current_text.len() > trigger_pos + 1 {
+                            self.browse_mode_user_input = Some(current_text[trigger_pos + 1..].to_string());
+                        } else {
+                            self.browse_mode_user_input = Some(String::new());
                         }
                     }
-
-                    autocomplete.prev();
-                    self.update_textarea_with_selection();
                 }
+
+                if let Some(autocomplete) = &mut self.autocomplete {
+                    autocomplete.prev();
+                }
+                self.update_textarea_with_selection();
             }
             KeyCode::Down => {
-                if let Some(autocomplete) = &mut self.autocomplete {
-                    // Save user's current input if not already in browse mode
-                    if self.browse_mode_user_input.is_none() {
-                        let current_text = self.text();
-                        if let Some(trigger_pos) = self.autocomplete_trigger_pos {
-                            if current_text.len() > trigger_pos + 1 {
-                                self.browse_mode_user_input = Some(current_text[trigger_pos + 1..].to_string());
-                            } else {
-                                self.browse_mode_user_input = Some(String::new());
-                            }
+                // Save user's current input if not already in browse mode
+                if self.browse_mode_user_input.is_none() {
+                    let current_text = self.text();
+                    if let Some(trigger_pos) = self.autocomplete_trigger_pos {
+                        if current_text.len() > trigger_pos + 1 {
+                            self.browse_mode_user_input = Some(current_text[trigger_pos + 1..].to_string());
+                        } else {
+                            self.browse_mode_user_input = Some(String::new());
                         }
                     }
-
-                    autocomplete.next();
-                    self.update_textarea_with_selection();
                 }
+
+                if let Some(autocomplete) = &mut self.autocomplete {
+                    autocomplete.next();
+                }
+                self.update_textarea_with_selection();
             }
             KeyCode::Enter => {
                 if key_event.modifiers.contains(KeyModifiers::SHIFT) {
@@ -247,7 +247,7 @@ impl InputWidget {
                         self.exit_autocomplete();
                     } else {
                         // If in browse mode, restore user's input first
-                        if let Some(user_input) = &self.browse_mode_user_input {
+                        if let Some(user_input) = self.browse_mode_user_input.take() {
                             // Restore user's filter text
                             let current_text = self.text();
                             let before_at = if trigger_pos < current_text.len() {
@@ -260,10 +260,7 @@ impl InputWidget {
                             for ch in before_at.chars() {
                                 self.textarea.insert_char(ch);
                             }
-                            self.textarea.insert_str(user_input);
-
-                            // Clear browse mode
-                            self.browse_mode_user_input = None;
+                            self.textarea.insert_str(&user_input);
                         }
 
                         // Insert character
@@ -287,24 +284,21 @@ impl InputWidget {
             }
             KeyCode::Backspace => {
                 // Exit browse mode if active
-                if self.browse_mode_user_input.is_some() {
+                if let Some(user_input) = self.browse_mode_user_input.take() {
                     // Restore user's input before handling backspace
-                    if let Some(user_input) = &self.browse_mode_user_input {
-                        let current_text = self.text();
-                        if let Some(trigger_pos) = self.autocomplete_trigger_pos {
-                            let before_at = if trigger_pos < current_text.len() {
-                                &current_text[..trigger_pos]
-                            } else {
-                                &current_text
-                            };
-                            self.clear();
-                            for ch in before_at.chars() {
-                                self.textarea.insert_char(ch);
-                            }
-                            self.textarea.insert_str(user_input);
+                    let current_text = self.text();
+                    if let Some(trigger_pos) = self.autocomplete_trigger_pos {
+                        let before_at = if trigger_pos < current_text.len() {
+                            &current_text[..trigger_pos]
+                        } else {
+                            &current_text
+                        };
+                        self.clear();
+                        for ch in before_at.chars() {
+                            self.textarea.insert_char(ch);
                         }
+                        self.textarea.insert_str(&user_input);
                     }
-                    self.browse_mode_user_input = None;
                 }
 
                 // Check if we're about to delete the @ or go back to parent directory
