@@ -11,6 +11,7 @@ mod llm_logger;
 mod platform;
 mod context;
 mod ui;
+mod logging;
 
 use std::io::{self, Write};
 
@@ -21,6 +22,7 @@ use llm_logger::LlmLogger;
 use std::time::Instant;
 use rustyline::{Editor, error::ReadlineError};
 use ui::TuiApp;
+use log::{info, warn, error, debug};
 
 
 /// Maximum number of inference rounds
@@ -35,36 +37,30 @@ async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
 
     // Initialize logging
-    env_logger::init();
+    logging::init_logging()?;
 
-    println!("🤖 CodingAgent starting...");
+    info!("CodingAgent starting...");
 
     // Build the tool map - register all 6 core tools
     let tools = build_tool_map();
-    println!("✅ Registered {} tools:", tools.len());
+    info!("Registered {} tools:", tools.len());
     let mut tool_names: Vec<_> = tools.keys().collect();
     tool_names.sort();
     for tool_name in tool_names {
-        println!("   - {}", tool_name);
+        info!("  - {}", tool_name);
     }
-    println!();
 
     // Build AgentOs from configuration
-    println!("📝 Loading configuration...");
+    debug!("Loading configuration...");
     let agent_os = config::load_and_build_agent_os(tools)?;
 
     // Display model information
-    if let Some(agent) = agent_os.agent("coding-agent") {
-        println!("✅ Agent: coding-agent");
+    if let Some(_agent) = agent_os.agent("coding-agent") {
+        info!("Agent: coding-agent");
     }
-    println!();
 
-    println!("✅ AgentOS initialized successfully");
-    println!();
-    println!("═══════════════════════════════════════════════════════════");
-    println!("  Starting TUI Mode...");
-    println!("═══════════════════════════════════════════════════════════");
-    println!();
+    info!("AgentOS initialized successfully");
+    info!("Starting TUI Mode...");
 
     // Run TUI mode
     run_tui_mode(agent_os).await
@@ -89,17 +85,13 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
     // Load command history
     let history_path = ".coding_agent_history";
     if let Err(_) = rl.load_history(history_path) {
-        println!("📝 No previous history found, starting fresh");
+        info!("No previous history found, starting fresh");
     }
 
     // Initialize LLM logger
     let mut logger = LlmLogger::new()?;
-    println!("📝 LLM interaction logging enabled (logs/llm_interactions.log)");
-    println!();
-    println!("💡 提示:");
-    println!("   - 输入 @ 进入 TUI 文件选择器");
-    println!("   - 或输入 @ 后按 Tab 键自动补全");
-    println!();
+    info!("LLM interaction logging enabled (logs/llm_interactions.log)");
+    info!("提示: 输入 @ 进入 TUI 文件选择器，或输入 @ 后按 Tab 键自动补全");
 
     loop {
         // Read user input with readline support
@@ -133,7 +125,7 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
 
             // Search for files (empty pattern to show all)
             if let Err(e) = selector.search("") {
-                eprintln!("⚠️  文件搜索失败: {}", e);
+                warn!("文件搜索失败: {}", e);
                 input.to_string()
             } else {
                 match selector.run() {
@@ -146,7 +138,7 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
                         input[..input.len()-1].to_string()
                     }
                     Err(e) => {
-                        eprintln!("⚠️  TUI 错误: {}", e);
+                        warn!("TUI 错误: {}", e);
                         input.to_string()
                     }
                 }
@@ -160,13 +152,12 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
 
         // Handle exit commands
         if matches!(final_input.as_str(), "exit" | "quit" | "q") {
-            println!("👋 Goodbye!");
+            info!("Goodbye!");
             break;
         }
 
         // Process the user's message
-        println!();
-        println!("🔄 Processing...");
+        debug!("Processing message...");
 
         // Preprocess: Expand @ file references
         // Non-interactive mode since TUI provides selection during input
@@ -178,8 +169,7 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
         {
             Ok(enhanced) => enhanced,
             Err(e) => {
-                println!("⚠️  上下文构建失败: {}", e);
-                println!("使用原始消息继续...");
+                warn!("上下文构建失败: {}, 使用原始消息继续", e);
                 final_input.clone()
             }
         };
@@ -194,8 +184,7 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
                 println!("═══════════════════════════════════════════════════════════");
             }
             Err(e) => {
-                println!();
-                println!("❌ Error: {}", e);
+                error!("Error: {}", e);
                 let _ = logger.log_error(&e.to_string());
             }
         }
@@ -207,7 +196,7 @@ async fn run_cli_mode(agent_os: AgentOs) -> anyhow::Result<()> {
 
     // Save history before exiting
     if let Err(err) = rl.save_history(history_path) {
-        eprintln!("⚠️  Failed to save history: {}", err);
+        warn!("Failed to save history: {}", err);
     }
 
     Ok(())
@@ -253,7 +242,7 @@ async fn process_message(
             Err(e) => {
                 if retry_count < max_retries && e.to_string().contains("utf-8") {
                     retry_count += 1;
-                    eprintln!("⚠️  UTF-8 stream error, retrying ({}/{})...", retry_count, max_retries);
+                    warn!("UTF-8 stream error, retrying ({}/{})...", retry_count, max_retries);
                     std::thread::sleep(std::time::Duration::from_millis(500 * retry_count as u64));
                     continue;
                 }
@@ -285,7 +274,7 @@ async fn process_message(
                         break; // Exit the event loop
                     }
 
-                    eprintln!("ERROR: {}", message);
+                    error!("Agent error: {}", message);
                     let _ = logger.log_error(&message);
                     return Err(anyhow::anyhow!("Agent error: {}", message));
                 }
@@ -296,19 +285,19 @@ async fn process_message(
         }
 
         // If we had a UTF-8 stream error and haven't exceeded retries, try again
-        if let Some(err_msg) = stream_error {
+        if stream_error.is_some() {
             if retry_count < max_retries {
                 retry_count += 1;
-                eprintln!("⚠️  UTF-8 stream error, retrying ({}/{})...", retry_count, max_retries);
+                warn!("UTF-8 stream error, retrying ({}/{})...", retry_count, max_retries);
                 std::thread::sleep(std::time::Duration::from_millis(500 * retry_count as u64));
 
                 // Clear any partial output before retry
                 if !final_response.is_empty() {
-                    eprintln!("\n[Partial response received, retrying...]");
+                    debug!("Partial response received, retrying...");
                 }
                 continue;
             } else {
-                eprintln!("⚠️  Max retries reached, returning partial response");
+                warn!("Max retries reached, returning partial response");
                 // Return what we have instead of error
             }
         }

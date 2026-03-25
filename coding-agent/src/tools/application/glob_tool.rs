@@ -12,6 +12,7 @@ use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
 use crate::tools::domain::validation::{validate_non_empty_string, validate_path};
 use crate::tools::domain::xml_builder::XmlBuilder;
+use log::warn;
 
 /// Glob tool
 ///
@@ -75,7 +76,7 @@ impl GlobTool {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Glob error: {}", e);
+                    warn!("Glob error: {}", e);
                 }
             }
         }

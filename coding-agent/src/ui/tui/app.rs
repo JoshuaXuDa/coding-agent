@@ -9,6 +9,7 @@ use crate::ui::tui::{
     input_status::{InputStatus, InputStatusIndicator},
     layout::calculate_layout,
     status_bar::StatusBar,
+    debug_panel::DebugPanel,
 };
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent},
@@ -57,6 +58,14 @@ pub struct TuiApp {
     last_tool_call: Option<String>,
     /// Buffer for incomplete UTF-8 sequences
     utf8_buffer: Vec<u8>,
+    /// Debug panel
+    debug_panel: DebugPanel,
+    /// Show debug panel
+    show_debug_panel: bool,
+    /// Log event receiver
+    log_rx: mpsc::UnboundedReceiver<crate::logging::LogEntry>,
+    /// Log event sender
+    log_tx: mpsc::UnboundedSender<crate::logging::LogEntry>,
 }
 
 impl TuiApp {
@@ -64,7 +73,7 @@ impl TuiApp {
     pub fn new(agent_os: AgentOs) -> anyhow::Result<Self> {
         let agent_os = Arc::new(agent_os);
         let (event_tx, event_rx) = mpsc::unbounded_channel::<TuiEvent>();
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let (log_tx, log_rx) = mpsc::unbounded_channel::<crate::logging::LogEntry>();
 
         Ok(Self {
             agent_os,
@@ -79,6 +88,10 @@ impl TuiApp {
             should_exit: false,
             last_tool_call: None,
             utf8_buffer: Vec::new(),
+            debug_panel: DebugPanel::new(1000),
+            show_debug_panel: false,
+            log_rx,
+            log_tx: log_tx.clone(),
         })
     }
 
@@ -135,6 +148,13 @@ impl TuiApp {
                     self.handle_tui_event(event);
                 }
 
+                // Log events for debug panel
+                Some(log_entry) = self.log_rx.recv() => {
+                    if self.show_debug_panel {
+                        self.debug_panel.add_log(log_entry);
+                    }
+                }
+
                 // Tick for periodic updates
                 _ = tick_interval.tick() => {
                     // Could update time, etc.
@@ -166,8 +186,61 @@ impl TuiApp {
             KeyCode::Char('q') => {
                 self.should_exit = true;
             }
+            KeyCode::F(12) => {
+                // Toggle debug panel
+                self.show_debug_panel = !self.show_debug_panel;
+            }
+            KeyCode::Char('l') => {
+                // Cycle log level filter if debug panel is visible
+                if self.show_debug_panel {
+                    self.debug_panel.cycle_level_filter();
+                }
+            }
             KeyCode::Char('c') => {
-                // Could be Ctrl+C, handled by crossterm
+                // Clear debug panel if visible
+                if self.show_debug_panel {
+                    self.debug_panel.clear();
+                }
+            }
+            KeyCode::PageUp => {
+                if self.input.is_autocomplete_active() {
+                    // Let input widget handle autocomplete navigation
+                    if self.input.handle_key_event(key) {
+                        self.send_message();
+                    }
+                } else if self.show_debug_panel {
+                    self.debug_panel.page_up();
+                }
+            }
+            KeyCode::PageDown => {
+                if self.input.is_autocomplete_active() {
+                    // Let input widget handle autocomplete navigation
+                    if self.input.handle_key_event(key) {
+                        self.send_message();
+                    }
+                } else if self.show_debug_panel {
+                    self.debug_panel.page_down();
+                }
+            }
+            KeyCode::Up => {
+                if self.input.is_autocomplete_active() {
+                    // Let input widget handle autocomplete navigation
+                    if self.input.handle_key_event(key) {
+                        self.send_message();
+                    }
+                } else if self.show_debug_panel {
+                    self.debug_panel.scroll_up();
+                }
+            }
+            KeyCode::Down => {
+                if self.input.is_autocomplete_active() {
+                    // Let input widget handle autocomplete navigation
+                    if self.input.handle_key_event(key) {
+                        self.send_message();
+                    }
+                } else if self.show_debug_panel {
+                    self.debug_panel.scroll_down();
+                }
             }
             _ => {
                 // Pass to input widget for all other keys
@@ -390,13 +463,20 @@ impl TuiApp {
     /// Draw the UI
     fn draw(&mut self, frame: &mut Frame) {
         let size = frame.size();
-        let areas = calculate_layout(size);
+        let areas = calculate_layout(size, self.show_debug_panel);
 
         // Draw title bar
         self.draw_title_bar(frame, areas.title);
 
         // Draw conversation
         self.draw_conversation(frame, areas.conversation);
+
+        // Draw debug panel if enabled
+        if self.show_debug_panel {
+            if let Some(debug_area) = areas.debug {
+                self.debug_panel.render(frame, debug_area);
+            }
+        }
 
         // Draw input
         self.input.render(frame, areas.input);
@@ -595,5 +675,10 @@ impl TuiApp {
     /// Get the event channel sender for external use
     pub fn event_tx(&self) -> mpsc::UnboundedSender<TuiEvent> {
         self.event_tx.clone()
+    }
+
+    /// Get the log channel sender for external use
+    pub fn log_tx(&self) -> mpsc::UnboundedSender<crate::logging::LogEntry> {
+        self.log_tx.clone()
     }
 }

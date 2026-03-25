@@ -170,23 +170,14 @@ impl Tool for BashTool {
         _context: &'life1 ToolCallContext<'life2>,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult, ToolError>> + Send + 'async_trait>> {
         Box::pin(async move {
-            eprintln!("[DEBUG] BashTool::execute called");
-            eprintln!("[DEBUG] Raw args: {}", args);
-
             // Parse arguments
             let bash_args = Self::parse_args(&args)
                 .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
-            eprintln!("[DEBUG] Parsed command: {}", bash_args.command);
-            eprintln!("[DEBUG] Parsed args: {:?}", bash_args.args);
-
             // Check if command is available
-            eprintln!("[DEBUG] Checking if command {} is available...", bash_args.command);
             let is_avail = self.executor.is_available(&bash_args.command);
-            eprintln!("[DEBUG] is_available result: {}", is_avail);
 
             if !is_avail {
-                eprintln!("[DEBUG] Command NOT available, returning error");
                 let xml = XmlBuilder::build_error(
                     "bash",
                     "COMMAND_NOT_FOUND",
@@ -198,15 +189,11 @@ impl Tool for BashTool {
             }
 
             // Build command request
-            eprintln!("[DEBUG] Command is available, building request...");
             let request = self.build_command_request(&bash_args);
 
             // Execute command
-            eprintln!("[DEBUG] Executing command...");
             let result = self.executor.execute(request).await
                 .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-            eprintln!("[DEBUG] Command execution completed");
 
             // Build XML response
             let command_display = if bash_args.args.is_empty() {

@@ -25,9 +25,6 @@ impl UnixCommandExecutor {
 
     /// Check if a command exists in PATH
     fn command_exists(command: &str) -> bool {
-        eprintln!("[DEBUG] command_exists called for: {}", command);
-        eprintln!("[DEBUG] Current PATH: {:?}", std::env::var("PATH"));
-
         // Use which command to check if command exists in PATH
         // This is more reliable than directly executing the command, as it
         // properly handles the PATH environment variable
@@ -35,30 +32,8 @@ impl UnixCommandExecutor {
             .arg("-c")
             .arg(format!("which {}", command))
             .stdout(Stdio::null())
-            .stderr(Stdio::piped())  // Capture stderr for debugging
+            .stderr(Stdio::piped())
             .status();
-
-        match &result {
-            Ok(status) => {
-                eprintln!("[DEBUG] which {} exit code: {:?}", command, status.code());
-                if !status.success() {
-                    // Try again and capture output for debugging
-                    let err_result = Command::new("sh")
-                        .arg("-c")
-                        .arg(format!("which {}", command))
-                        .output();
-                    if let Ok(output) = err_result {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        if !stderr.is_empty() {
-                            eprintln!("[DEBUG] which stderr: {}", stderr);
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("[DEBUG] which {} failed to execute: {}", command, e);
-            }
-        }
 
         result.map(|status| status.success()).unwrap_or(false)
     }
@@ -75,13 +50,8 @@ impl CommandExecutor for UnixCommandExecutor {
     async fn execute(&self, request: CommandRequest) -> Result<CommandResult> {
         let start = std::time::Instant::now();
 
-        eprintln!("[DEBUG] execute called for command: {}", request.command);
-        eprintln!("[DEBUG] execute args: {:?}", request.args);
-        eprintln!("[DEBUG] execute working_dir: {:?}", request.working_dir);
-
         // Build the command
         // Use /usr/bin/env to ensure command is found in PATH
-        eprintln!("[DEBUG] Creating /usr/bin/env {} command", request.command);
         let mut cmd = TokioCommand::new("/usr/bin/env");
         cmd.arg(&request.command);
         cmd.args(&request.args);
@@ -110,7 +80,6 @@ impl CommandExecutor for UnixCommandExecutor {
         }
 
         // Execute the command
-        eprintln!("[DEBUG] About to execute command...");
         let output = if let Some(timeout) = request.timeout {
             // Execute with timeout
             tokio::select! {
@@ -130,13 +99,6 @@ impl CommandExecutor for UnixCommandExecutor {
 
         let output = output.context(format!("Failed to execute command: {}", request.command))?;
         let duration_ms = start.elapsed().as_millis() as u64;
-
-        eprintln!("[DEBUG] Command exit code: {:?}", output.status.code());
-        let stdout_preview = String::from_utf8_lossy(&output.stdout).chars().take(200).collect::<String>();
-        eprintln!("[DEBUG] Command stdout: {}", stdout_preview);
-        if !output.stderr.is_empty() {
-            eprintln!("[DEBUG] Command stderr: {}", String::from_utf8_lossy(&output.stderr));
-        }
 
         // Extract stdout and stderr
         let stdout = if request.capture_stdout {
@@ -197,18 +159,13 @@ impl CommandExecutor for UnixCommandExecutor {
     }
 
     fn is_available(&self, command: &str) -> bool {
-        eprintln!("[DEBUG] is_available called for: {}", command);
-
         // Check for built-in commands
         if matches!(command, "sh" | "bash" | "zsh" | "dash") {
-            eprintln!("[DEBUG] {} is a built-in command", command);
             return true;
         }
 
         // Check if command exists in PATH
-        let available = Self::command_exists(command);
-        eprintln!("[DEBUG] is_available({}) = {}", command, available);
-        available
+        Self::command_exists(command)
     }
 }
 

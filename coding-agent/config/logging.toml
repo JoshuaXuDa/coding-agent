@@ -1,0 +1,46 @@
+# Logging configuration for CodingAgent
+#
+# This file controls the behavior of the logging system.
+# Environment variables take precedence over this file.
+
+[general]
+# Default log level: error, warn, info, debug, trace
+default_level = "info"
+# Use colored output in terminal
+colored = true
+# Show timestamps in log messages
+show_timestamp = true
+# Show module paths in log messages
+show_module = false
+# Use emoji indicators for log levels
+use_emoji = false
+
+[outputs]
+# Console output settings
+[outputs.console]
+enabled = true
+level = "info"
+
+# File output settings (optional)
+[outputs.file]
+enabled = false
+path = "logs/coding-agent.log"
+level = "debug"
+# Rotate logs when they exceed this size (in MB)
+max_size_mb = 100
+# Keep this many rotated logs
+max_files = 5
+
+# Per-module log level overrides
+[modules]
+# Example: Set debug level for tools module
+# "coding-agent::tools" = "debug"
+
+# TUI-specific logging settings
+[tui]
+# Whether to log to TUI debug panel
+log_to_panel = true
+# Maximum number of log lines to keep in memory
+max_log_lines = 1000
+# Whether to show debug panel by default
+show_debug_panel = false
