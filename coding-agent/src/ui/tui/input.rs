@@ -214,27 +214,13 @@ impl InputWidget {
                     self.textarea.insert_newline();
                 } else if let Some(autocomplete) = &mut self.autocomplete {
                     // Try to enter directory or select file
-                    if let Some(dir_name) = autocomplete.enter_directory() {
-                        // Directory entered - update textarea with dir name
-                        self.textarea.insert_str(&format!("{}/", dir_name));
+                    if let Some(_dir_name) = autocomplete.enter_directory() {
+                        // Directory entered - update_textarea_with_selection already updated the content
+                        // Just need to clear browse mode to allow new input
+                        self.browse_mode_user_input = None;
                     } else {
-                        // File selected - insert full path and exit autocomplete
-                        if let Some(path) = autocomplete.get_selected_path() {
-                            // Remove the @ and incomplete path, then insert the full path
-                            if let Some(trigger_pos) = self.autocomplete_trigger_pos {
-                                // Clear everything from @ onwards
-                                let current_text = self.text();
-                                let before_at = &current_text[..trigger_pos];
-                                self.clear();
-                                for c in before_at.chars() {
-                                    self.textarea.insert_char(c);
-                                }
-                                // Insert @ and the full path
-                                self.textarea.insert_char('@');
-                                self.textarea.insert_str(&path);
-                            }
-                        }
-                        // Exit autocomplete mode
+                        // File selected - update_textarea_with_selection already updated the content with @path
+                        // Just exit autocomplete mode
                         self.exit_autocomplete();
                     }
                 }
