@@ -9,7 +9,9 @@ use crate::ui::tui::events::ToolStatus;
 pub enum ChatMessage {
     /// User input
     User { content: String },
-    /// Assistant response
+    /// Thinking/reasoning content (collapsible)
+    Thinking { content: String, expanded: bool },
+    /// Assistant response (formal output)
     Assistant { content: String },
     /// Tool call
     ToolCall { name: String, status: ToolStatus },
@@ -22,6 +24,7 @@ impl ChatMessage {
     pub fn content(&self) -> &str {
         match self {
             ChatMessage::User { content } => content,
+            ChatMessage::Thinking { content, .. } => content,
             ChatMessage::Assistant { content } => content,
             ChatMessage::ToolCall { .. } => "[Tool Call]",
             ChatMessage::System { content } => content,
@@ -41,5 +44,25 @@ impl ChatMessage {
     /// Check if this is a tool call
     pub fn is_tool_call(&self) -> bool {
         matches!(self, ChatMessage::ToolCall { .. })
+    }
+
+    /// Check if this is a thinking message
+    pub fn is_thinking(&self) -> bool {
+        matches!(self, ChatMessage::Thinking { .. })
+    }
+
+    /// Toggle expanded state for thinking messages
+    pub fn toggle_thinking(&mut self) {
+        if let ChatMessage::Thinking { expanded, .. } = self {
+            *expanded = !*expanded;
+        }
+    }
+
+    /// Get expanded state for thinking messages
+    pub fn is_thinking_expanded(&self) -> bool {
+        match self {
+            ChatMessage::Thinking { expanded, .. } => *expanded,
+            _ => false,
+        }
     }
 }

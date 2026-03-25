@@ -2,14 +2,18 @@
 //!
 //! Handles async events from both user input and agent responses.
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyEvent, MouseEvent};
 
 /// TUI events
 #[derive(Debug, Clone)]
 pub enum TuiEvent {
     /// User keyboard input
     Input(KeyEvent),
-    /// Text delta from agent (streaming)
+    /// Mouse event
+    Mouse(MouseEvent),
+    /// Reasoning/thinking delta from agent (streaming)
+    AgentReasoning(String),
+    /// Text delta from agent (streaming formal output)
     AgentText(String),
     /// Agent is calling a tool
     AgentToolCall { name: String, input: serde_json::Value },

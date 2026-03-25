@@ -10,6 +10,7 @@ use crate::ui::tui::{
     layout::calculate_layout,
     status_bar::StatusBar,
     debug_panel::DebugPanel,
+    markdown::MarkdownRenderer,
 };
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent},
@@ -38,6 +39,8 @@ pub struct TuiApp {
     agent_os: Arc<AgentOs>,
     /// Chat messages
     messages: Vec<ChatMessage>,
+    /// Current reasoning content being built
+    current_reasoning: String,
     /// Current assistant response being built
     current_response: String,
     /// Input widget
@@ -48,6 +51,10 @@ pub struct TuiApp {
     status: StatusBar,
     /// Scroll offset for conversation
     scroll_offset: usize,
+    /// Conversation scroll offset (for mouse scrolling)
+    conversation_scroll: usize,
+    /// Cached layout areas for mouse click detection
+    cached_areas: Option<crate::ui::tui::layout::LayoutAreas>,
     /// Event receiver
     event_rx: mpsc::UnboundedReceiver<TuiEvent>,
     /// Event sender
@@ -78,11 +85,14 @@ impl TuiApp {
         Ok(Self {
             agent_os,
             messages: Vec::new(),
+            current_reasoning: String::new(),
             current_response: String::new(),
             input: InputWidget::new(),
             input_status: InputStatusIndicator::new(),
             status: StatusBar::new(),
             scroll_offset: 0,
+            conversation_scroll: 0,
+            cached_areas: None,
             event_rx,
             event_tx,
             should_exit: false,
@@ -134,11 +144,13 @@ impl TuiApp {
             use tokio::select;
 
             tokio::select! {
-                // Keyboard input
+                // Keyboard and mouse input
                 _ = tokio::time::sleep(Duration::from_millis(50)) => {
                     if event::poll(Duration::from_millis(50))? {
-                        if let event::Event::Key(key) = event::read()? {
-                            self.handle_key_event(key);
+                        match event::read()? {
+                            event::Event::Key(key) => self.handle_key_event(key),
+                            event::Event::Mouse(mouse) => self.handle_mouse_event(mouse),
+                            _ => {}
                         }
                     }
                 }
@@ -243,6 +255,13 @@ impl TuiApp {
                 }
             }
             _ => {
+                // Check for Ctrl+T to toggle thinking block
+                if key.code == KeyCode::Char('t')
+                    && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+                {
+                    self.toggle_last_thinking();
+                    return;
+                }
                 // Pass to input widget for all other keys
                 if self.input.handle_key_event(key) {
                     // User wants to send the message (only happens on Enter)
@@ -252,16 +271,98 @@ impl TuiApp {
         }
     }
 
+    /// Handle mouse events
+    fn handle_mouse_event(&mut self, event: crossterm::event::MouseEvent) {
+        use crossterm::event::{MouseButton, MouseEventKind};
+
+        match event.kind {
+            // Scroll wheel - scroll conversation or debug panel
+            MouseEventKind::ScrollUp => {
+                if self.is_in_debug_panel(event.column, event.row) {
+                    self.debug_panel.scroll_up();
+                } else if self.is_in_conversation_area(event.column, event.row) {
+                    self.conversation_scroll = self.conversation_scroll.saturating_sub(1);
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if self.is_in_debug_panel(event.column, event.row) {
+                    self.debug_panel.scroll_down();
+                } else if self.is_in_conversation_area(event.column, event.row) {
+                    self.conversation_scroll = self.conversation_scroll.saturating_add(1);
+                }
+            }
+
+            // Left click - toggle thinking blocks
+            MouseEventKind::Down(MouseButton::Left) => {
+                if self.is_click_on_thinking_block(event.column, event.row) {
+                    self.toggle_last_thinking();
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Check if mouse position is in conversation area
+    fn is_in_conversation_area(&self, x: u16, y: u16) -> bool {
+        if let Some(areas) = &self.cached_areas {
+            let conv = areas.conversation;
+            x >= conv.x && x < conv.x + conv.width
+                && y >= conv.y && y < conv.y + conv.height
+        } else {
+            false
+        }
+    }
+
+    /// Check if mouse position is in debug panel
+    fn is_in_debug_panel(&self, x: u16, y: u16) -> bool {
+        if !self.show_debug_panel {
+            return false;
+        }
+        if let Some(areas) = &self.cached_areas {
+            if let Some(debug) = areas.debug {
+                x >= debug.x && x < debug.x + debug.width
+                    && y >= debug.y && y < debug.y + debug.height
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Check if click is on a thinking block
+    fn is_click_on_thinking_block(&self, x: u16, y: u16) -> bool {
+        // Simple check: if we have thinking messages and click is in conversation area
+        // This is a basic implementation - could be enhanced with precise region tracking
+        if !self.is_in_conversation_area(x, y) {
+            return false;
+        }
+
+        // Check if we have any thinking messages
+        self.messages.iter().any(|msg| msg.is_thinking())
+    }
+
     /// Handle TUI events
     fn handle_tui_event(&mut self, event: TuiEvent) {
         match event {
+            TuiEvent::AgentReasoning(delta) => {
+                // Filter out standalone empty lines
+                if delta == "\n" && self.current_reasoning.is_empty() {
+                    return;
+                }
+
+                // Append reasoning content
+                self.append_reasoning_delta(&delta);
+                self.status.set_streaming(true);
+            }
             TuiEvent::AgentText(delta) => {
-                // 过滤掉单独的空行（如果响应为空）
+                // Filter out standalone empty lines
                 if delta == "\n" && self.current_response.is_empty() {
                     return;
                 }
 
-                // Use UTF-8 safe append instead of push_str
+                // Append response content
                 self.append_text_delta(&delta);
                 self.status.set_streaming(true);
             }
@@ -286,7 +387,16 @@ impl TuiApp {
                 self.status.set_status("Ready");
             }
             TuiEvent::AgentError(err) => {
-                // 如果有流式响应，先保存
+                // Save reasoning if exists
+                if !self.current_reasoning.is_empty() {
+                    self.messages.push(ChatMessage::Thinking {
+                        content: self.current_reasoning.clone(),
+                        expanded: false,
+                    });
+                    self.current_reasoning = String::new();
+                }
+
+                // Save response if exists
                 if !self.current_response.is_empty() {
                     self.messages.push(ChatMessage::Assistant {
                         content: self.current_response.clone(),
@@ -294,7 +404,7 @@ impl TuiApp {
                     self.current_response = String::new();
                 }
 
-                // 添加错误消息
+                // Add error message
                 self.messages.push(ChatMessage::System {
                     content: format!("❌ 错误: {}", err),
                 });
@@ -303,7 +413,16 @@ impl TuiApp {
                 self.status.set_status("Error");
             }
             TuiEvent::AgentResponseComplete => {
-                // 将流式响应保存为正式消息
+                // Save reasoning if exists
+                if !self.current_reasoning.is_empty() {
+                    self.messages.push(ChatMessage::Thinking {
+                        content: self.current_reasoning.clone(),
+                        expanded: false,
+                    });
+                    self.current_reasoning = String::new();
+                }
+
+                // Save response if exists
                 if !self.current_response.is_empty() {
                     self.messages.push(ChatMessage::Assistant {
                         content: self.current_response.clone(),
@@ -311,7 +430,7 @@ impl TuiApp {
                     self.current_response = String::new();
                 }
 
-                // 更新状态
+                // Update status
                 self.status.set_streaming(false);
                 self.input_status.set_status(InputStatus::Sent);
             }
@@ -339,7 +458,8 @@ impl TuiApp {
         self.messages.push(ChatMessage::User { content: text.clone() });
         self.input.clear();
 
-        // Start a new assistant response
+        // Start new reasoning and response buffers
+        self.current_reasoning = String::new();
         self.current_response = String::new();
 
         // Spawn agent task to process the message
@@ -374,8 +494,8 @@ impl TuiApp {
                                 let _ = event_tx.send(TuiEvent::AgentText(delta));
                             }
                             AgentEvent::ReasoningDelta { delta, .. } => {
-                                // ReasoningDelta 也是文本的一部分，像 TextDelta 一样处理
-                                let _ = event_tx.send(TuiEvent::AgentText(delta));
+                                // Send reasoning content as separate event
+                                let _ = event_tx.send(TuiEvent::AgentReasoning(delta));
                             }
                             AgentEvent::ToolCallStart { name, .. } => {
                                 let _ = event_tx.send(TuiEvent::AgentToolCall {
@@ -436,6 +556,44 @@ impl TuiApp {
         }
     }
 
+    /// Append reasoning delta with UTF-8 boundary handling
+    fn append_reasoning_delta(&mut self, delta: &str) {
+        // Extend the buffer with new bytes
+        self.utf8_buffer.extend_from_slice(delta.as_bytes());
+
+        // Try to convert the entire buffer to a string
+        match String::from_utf8(std::mem::take(&mut self.utf8_buffer)) {
+            Ok(text) => {
+                // All bytes are valid UTF-8
+                self.current_reasoning.push_str(&text);
+                // Buffer is already empty due to mem::take
+            }
+            Err(err) => {
+                // Some bytes are invalid UTF-8
+                let valid_len = err.utf8_error().valid_up_to();
+                let bytes = err.into_bytes();
+                if valid_len > 0 {
+                    // Append the valid portion
+                    let valid_text = String::from_utf8_lossy(&bytes[..valid_len]);
+                    self.current_reasoning.push_str(&valid_text);
+                }
+                // Keep the incomplete bytes in buffer
+                self.utf8_buffer = bytes[valid_len..].to_vec();
+            }
+        }
+    }
+
+    /// Toggle the last thinking block's expanded state
+    fn toggle_last_thinking(&mut self) {
+        // Find the last thinking message and toggle its state
+        for msg in self.messages.iter_mut().rev() {
+            if let ChatMessage::Thinking { expanded, .. } = msg {
+                *expanded = !*expanded;
+                break;
+            }
+        }
+    }
+
     /// Wrap text to fit within a given width, handling UTF-8 correctly
     fn wrap_text(text: &str, width: usize) -> Vec<String> {
         if text.is_empty() {
@@ -464,6 +622,9 @@ impl TuiApp {
     fn draw(&mut self, frame: &mut Frame) {
         let size = frame.size();
         let areas = calculate_layout(size, self.show_debug_panel);
+
+        // Cache layout areas for mouse event handling
+        self.cached_areas = Some(areas.clone());
 
         // Draw title bar
         self.draw_title_bar(frame, areas.title);
@@ -529,7 +690,12 @@ impl TuiApp {
         let available_width = area.width.saturating_sub(4) as usize;
         let mut last_message_type: Option<&str> = None;
 
-        for msg in &self.messages {
+        // Apply scroll offset - skip messages that are above the visible area
+        let visible_messages: Vec<_> = self.messages.iter()
+            .skip(self.conversation_scroll)
+            .collect();
+
+        for msg in visible_messages {
             // Add separator between different message types
             if let Some(last_type) = last_message_type {
                 let current_type = match msg {
@@ -568,20 +734,44 @@ impl TuiApp {
                     }
                     last_message_type = Some("user");
                 }
-                ChatMessage::Assistant { content } => {
-                    let wrapped_lines = Self::wrap_text(content, available_width);
-                    for (i, line) in wrapped_lines.iter().enumerate() {
-                        if i == 0 {
+                ChatMessage::Thinking { content, expanded } => {
+                    // Show thinking block with expand/collapse indicator
+                    if *expanded {
+                        // Expanded: show content with markdown rendering
+                        let rendered = MarkdownRenderer::render(content, available_width);
+                        text.push_line(Line::from(vec![
+                            Span::styled("💭 [思考内容 - 按Ctrl+T折叠]", Style::default().fg(Color::DarkGray)),
+                        ]));
+                        for line in rendered.lines {
                             text.push_line(Line::from(vec![
-                                Span::styled("Agent: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                                Span::styled(line.clone(), Style::default().fg(Color::White)),
-                            ]));
-                        } else {
-                            text.push_line(Line::from(vec![
-                                Span::styled("       ", Style::default()),
-                                Span::styled(line.clone(), Style::default().fg(Color::White)),
+                                Span::styled("  ", Style::default()),
+                                Span::styled(line.clone(), Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)),
                             ]));
                         }
+                    } else {
+                        // Collapsed: show brief indicator
+                        text.push_line(Line::from(vec![
+                            Span::styled("💭 ", Style::default().fg(Color::DarkGray)),
+                            Span::styled(
+                                format!("[思考内容已折叠，按Ctrl+T展开 - {}字]", content.chars().count()),
+                                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                            ),
+                        ]));
+                    }
+                    text.push_line(Line::from(""));
+                    last_message_type = Some("thinking");
+                }
+                ChatMessage::Assistant { content } => {
+                    // Use markdown rendering for assistant messages
+                    let rendered = MarkdownRenderer::render(content, available_width);
+                    text.push_line(Line::from(vec![
+                        Span::styled("Agent: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                    ]));
+                    for line in rendered.lines {
+                        text.push_line(Line::from(vec![
+                            Span::styled("       ", Style::default()),
+                            Span::styled(line.clone(), Style::default().fg(Color::White)),
+                        ]));
                     }
                     last_message_type = Some("assistant");
                 }
@@ -606,6 +796,28 @@ impl TuiApp {
                     ]));
                 }
             }
+        }
+
+        // Add current streaming reasoning with wrapping
+        if !self.current_reasoning.is_empty() {
+            text.push_line(Line::from(vec![
+                Span::styled("💭 [思考中...]", Style::default().fg(Color::DarkGray)),
+            ]));
+            let wrapped_lines = Self::wrap_text(&self.current_reasoning, available_width);
+            let line_count = wrapped_lines.len();
+            for (i, line) in wrapped_lines.iter().enumerate() {
+                let is_last = i == line_count - 1;
+                text.push_line(Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::styled(line.clone(), Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)),
+                    if is_last {
+                        Span::styled("▌", Style::default().fg(Color::DarkGray))
+                    } else {
+                        Span::styled("", Style::default())
+                    },
+                ]));
+            }
+            text.push_line(Line::from(""));
         }
 
         // Add current streaming response with wrapping
@@ -646,7 +858,7 @@ impl TuiApp {
 
     /// Draw the status bar
     fn draw_status_bar(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let help_text = "Enter:发送 ↑↓:滚动 ESC:退出";
+        let help_text = "Enter:发送 滚轮/↑↓:滚动 点击/Ctrl+T:切换 ESC:退出";
 
         let status_text = if self.status.is_streaming {
             format!("⏳ {} | {} | Tools: {} | Model: {}",
