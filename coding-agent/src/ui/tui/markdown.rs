@@ -29,7 +29,7 @@ impl MarkdownRenderer {
             match event {
                 // Start tags
                 Event::Start(tag) => match tag {
-                    Tag::Paragraph(_) => {
+                    Tag::Paragraph => {
                         in_paragraph = true;
                     }
                     Tag::Heading { level, .. } => {
@@ -80,7 +80,7 @@ impl MarkdownRenderer {
                     Tag::List(_) => {
                         // List start, handled by Item
                     }
-                    Tag::Item(_) => {
+                    Tag::Item => {
                         if !current_line.is_empty() {
                             lines.push(current_line.clone());
                             current_line.clear();
@@ -89,13 +89,13 @@ impl MarkdownRenderer {
                         let style = Style::default().fg(Color::Yellow);
                         current_line.push(Span::styled(format!("{}• ", indent), style));
                     }
-                    Tag::Emphasis(_, _) => {
+                    Tag::Emphasis => {
                         // Start emphasis (italic) - use dim for terminals that don't support italic
                     }
-                    Tag::Strong(_, _) => {
+                    Tag::Strong => {
                         // Start strong (bold) - marker handled in text
                     }
-                    Tag::Strikethrough(_) => {
+                    Tag::Strikethrough => {
                         // Start strikethrough - use dim
                     }
                     Tag::Link { .. } => {
@@ -115,7 +115,7 @@ impl MarkdownRenderer {
                         // Table cell content handled in Text
                     }
                     Tag::FootnoteDefinition(_) => {}
-                    Tag::HtmlBlock(_) => {}
+                    Tag::HtmlBlock => {}
                 },
 
                 // End tags
