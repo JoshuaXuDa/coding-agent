@@ -195,6 +195,8 @@ impl MarkdownRenderer {
                     TagEnd::TableCell => {}
                     TagEnd::FootnoteDefinition => {}
                     TagEnd::HtmlBlock => {}
+                    TagEnd::Image => {}
+                    TagEnd::MetadataBlock(_) => {}
                 },
 
                 // Text and inline elements
