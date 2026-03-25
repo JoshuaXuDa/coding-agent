@@ -229,7 +229,8 @@ impl InputWidget {
                                 for c in before_at.chars() {
                                     self.textarea.insert_char(c);
                                 }
-                                // Insert the full path
+                                // Insert @ and the full path
+                                self.textarea.insert_char('@');
                                 self.textarea.insert_str(&path);
                             }
                         }
@@ -363,11 +364,12 @@ impl InputWidget {
                     &current_text
                 };
 
-                // Clear and rebuild with selected path
+                // Clear and rebuild with selected path (including @)
                 self.clear();
                 for c in before_at.chars() {
                     self.textarea.insert_char(c);
                 }
+                self.textarea.insert_char('@');  // Keep the @ symbol
                 self.textarea.insert_str(&selected_path);
             }
         }
