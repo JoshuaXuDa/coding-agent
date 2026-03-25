@@ -22,7 +22,7 @@ impl MarkdownRenderer {
         let mut quote_level: usize = 0;
         let mut table_alignments = Vec::new();
         let mut in_table = false;
-        let mut table_row = Vec::new();
+        let mut table_row: Vec<String> = Vec::new();
         let mut table_header = false;
 
         for event in parser {
