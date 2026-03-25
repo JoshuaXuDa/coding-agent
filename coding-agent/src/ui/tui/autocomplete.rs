@@ -307,7 +307,12 @@ impl FileAutocomplete {
 
             // Remove the last path component from input_prefix
             if let Some(pos) = self.input_prefix.rfind('/') {
-                self.input_prefix = self.input_prefix[..pos + 1].to_string();
+                // Ensure the slice is within bounds
+                if pos + 1 <= self.input_prefix.len() {
+                    self.input_prefix = self.input_prefix[..pos + 1].to_string();
+                } else {
+                    self.input_prefix.clear();
+                }
             } else {
                 self.input_prefix.clear();
             }
@@ -395,7 +400,8 @@ impl FileAutocomplete {
                 // Truncate long paths (using character-based slicing for UTF-8 safety)
                 let display_name = if display_name.chars().count() > 40 {
                     let chars: Vec<char> = display_name.chars().collect();
-                    let truncated: String = chars[..37].iter().collect();
+                    let truncate_len = 37.min(chars.len());
+                    let truncated: String = chars[..truncate_len].iter().collect();
                     format!("{}...", truncated)
                 } else {
                     display_name
@@ -428,7 +434,7 @@ impl FileAutocomplete {
                         let total_chars = display_name_chars.len();
 
                         // Before match
-                        if char_pos > 0 {
+                        if char_pos > 0 && char_pos <= total_chars {
                             let before: String = display_name_chars[..char_pos].iter().collect();
                             spans.push(Span::styled(
                                 before,
@@ -442,16 +448,18 @@ impl FileAutocomplete {
 
                         // Matching part
                         let match_end = (char_pos + filter_char_len).min(total_chars);
-                        let matched: String = display_name_chars[char_pos..match_end].iter().collect();
-                        spans.push(Span::styled(
-                            matched,
-                            Style::default()
-                                .fg(if is_selected { Color::White } else { Color::Green })
-                                .add_modifier(ratatui::style::Modifier::BOLD),
-                        ));
+                        if char_pos < match_end && char_pos <= total_chars && match_end <= total_chars {
+                            let matched: String = display_name_chars[char_pos..match_end].iter().collect();
+                            spans.push(Span::styled(
+                                matched,
+                                Style::default()
+                                    .fg(if is_selected { Color::White } else { Color::Green })
+                                    .add_modifier(ratatui::style::Modifier::BOLD),
+                            ));
+                        }
 
                         // After match
-                        if match_end < total_chars {
+                        if match_end < total_chars && match_end <= total_chars {
                             let after: String = display_name_chars[match_end..].iter().collect();
                             spans.push(Span::styled(
                                 after,

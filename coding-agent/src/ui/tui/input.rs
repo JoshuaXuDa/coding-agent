@@ -32,6 +32,9 @@ pub struct InputWidget {
     pub autocomplete: Option<FileAutocomplete>,
     /// Track the @ symbol position for autocomplete
     pub autocomplete_trigger_pos: Option<usize>,
+    /// Track whether user is in browse mode (navigating with arrows) vs edit mode (typing)
+    /// Stores user's filter text when in browse mode
+    browse_mode_user_input: Option<String>,
 }
 
 impl InputWidget {
@@ -44,6 +47,7 @@ impl InputWidget {
             ready_to_send: false,
             autocomplete: None,
             autocomplete_trigger_pos: None,
+            browse_mode_user_input: None,
         }
     }
 
@@ -170,12 +174,38 @@ impl InputWidget {
         match key_event.code {
             KeyCode::Up => {
                 if let Some(autocomplete) = &mut self.autocomplete {
+                    // Save user's current input if not already in browse mode
+                    if self.browse_mode_user_input.is_none() {
+                        let current_text = self.text();
+                        if let Some(trigger_pos) = self.autocomplete_trigger_pos {
+                            if current_text.len() > trigger_pos + 1 {
+                                self.browse_mode_user_input = Some(current_text[trigger_pos + 1..].to_string());
+                            } else {
+                                self.browse_mode_user_input = Some(String::new());
+                            }
+                        }
+                    }
+
                     autocomplete.prev();
+                    self.update_textarea_with_selection();
                 }
             }
             KeyCode::Down => {
                 if let Some(autocomplete) = &mut self.autocomplete {
+                    // Save user's current input if not already in browse mode
+                    if self.browse_mode_user_input.is_none() {
+                        let current_text = self.text();
+                        if let Some(trigger_pos) = self.autocomplete_trigger_pos {
+                            if current_text.len() > trigger_pos + 1 {
+                                self.browse_mode_user_input = Some(current_text[trigger_pos + 1..].to_string());
+                            } else {
+                                self.browse_mode_user_input = Some(String::new());
+                            }
+                        }
+                    }
+
                     autocomplete.next();
+                    self.update_textarea_with_selection();
                 }
             }
             KeyCode::Enter => {
@@ -216,9 +246,30 @@ impl InputWidget {
                         self.textarea.insert_char(c);
                         self.exit_autocomplete();
                     } else {
-                        // Insert character first
+                        // If in browse mode, restore user's input first
+                        if let Some(user_input) = &self.browse_mode_user_input {
+                            // Restore user's filter text
+                            let current_text = self.text();
+                            let before_at = if trigger_pos < current_text.len() {
+                                &current_text[..trigger_pos]
+                            } else {
+                                &current_text
+                            };
+
+                            self.clear();
+                            for ch in before_at.chars() {
+                                self.textarea.insert_char(ch);
+                            }
+                            self.textarea.insert_str(user_input);
+
+                            // Clear browse mode
+                            self.browse_mode_user_input = None;
+                        }
+
+                        // Insert character
                         self.textarea.insert_char(c);
-                        // Use the NEW text after insertion
+
+                        // Update filter
                         let new_text = self.text();
                         if let Some(autocomplete) = &mut self.autocomplete {
                             let filter: String = if new_text.len() > trigger_pos + 1 {
@@ -235,6 +286,27 @@ impl InputWidget {
                 }
             }
             KeyCode::Backspace => {
+                // Exit browse mode if active
+                if self.browse_mode_user_input.is_some() {
+                    // Restore user's input before handling backspace
+                    if let Some(user_input) = &self.browse_mode_user_input {
+                        let current_text = self.text();
+                        if let Some(trigger_pos) = self.autocomplete_trigger_pos {
+                            let before_at = if trigger_pos < current_text.len() {
+                                &current_text[..trigger_pos]
+                            } else {
+                                &current_text
+                            };
+                            self.clear();
+                            for ch in before_at.chars() {
+                                self.textarea.insert_char(ch);
+                            }
+                            self.textarea.insert_str(user_input);
+                        }
+                    }
+                    self.browse_mode_user_input = None;
+                }
+
                 // Check if we're about to delete the @ or go back to parent directory
                 let current_text = self.text();
                 if let Some(trigger_pos) = self.autocomplete_trigger_pos {
@@ -285,11 +357,34 @@ impl InputWidget {
         false
     }
 
+    /// Update textarea to show the currently selected file path
+    fn update_textarea_with_selection(&mut self) {
+        if let (Some(autocomplete), Some(trigger_pos)) = (&self.autocomplete, self.autocomplete_trigger_pos) {
+            if let Some(selected_path) = autocomplete.get_selected_path() {
+                // Get text before @
+                let current_text = self.text();
+                let before_at = if trigger_pos < current_text.len() {
+                    &current_text[..trigger_pos]
+                } else {
+                    &current_text
+                };
+
+                // Clear and rebuild with selected path
+                self.clear();
+                for c in before_at.chars() {
+                    self.textarea.insert_char(c);
+                }
+                self.textarea.insert_str(&selected_path);
+            }
+        }
+    }
+
     /// Exit autocomplete mode
     fn exit_autocomplete(&mut self) {
         self.mode = InputMode::Normal;
         self.autocomplete = None;
         self.autocomplete_trigger_pos = None;
+        self.browse_mode_user_input = None;
     }
 
     /// Check if autocomplete is active
