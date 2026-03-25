@@ -9,6 +9,7 @@ pub mod input;
 pub mod input_status;
 pub mod events;
 pub mod status_bar;
+pub mod autocomplete;
 
 pub use app::TuiApp;
 pub use input_status::{InputStatus, InputStatusIndicator};

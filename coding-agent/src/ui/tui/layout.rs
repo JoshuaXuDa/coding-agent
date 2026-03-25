@@ -17,6 +17,8 @@ pub struct LayoutAreas {
     pub input_status: Rect,
     /// Status bar area
     pub status: Rect,
+    /// Autocomplete popup area (optional)
+    pub popup: Option<Rect>,
 }
 
 /// Calculate layout areas for the given terminal size
@@ -33,11 +35,22 @@ pub fn calculate_layout(size: Rect) -> LayoutAreas {
         ])
         .split(size);
 
+    // Calculate popup area - always create it, positioned above input
+    let popup_height = 10u16;
+    let popup_width = 50u16;
+    let popup = Some(Rect {
+        x: 2,  // Left margin
+        y: chunks[1].bottom().saturating_sub(popup_height + 1),
+        width: popup_width,
+        height: popup_height,
+    });
+
     LayoutAreas {
         title: chunks[0],
         conversation: chunks[1],
         input: chunks[2],
         input_status: chunks[3],
         status: chunks[4],
+        popup,
     }
 }

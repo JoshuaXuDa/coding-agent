@@ -149,19 +149,11 @@ impl TuiApp {
     fn handle_key_event(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Esc => {
-                // If in file selector mode, cancel it
-                if self.input.mode() == &InputMode::FileSelector {
+                // If in autocomplete mode, cancel it
+                if self.input.mode() == &InputMode::Autocomplete {
                     self.input.set_mode(InputMode::Normal);
-                    // Remove the @ from input
-                    let text = self.input.text();
-                    if text.ends_with('@') {
-                        let new_text = text[..text.len()-1].to_string();
-                        self.input.clear();
-                        // Re-insert without @
-                        for c in new_text.chars() {
-                            self.input.insert_char(c);
-                        }
-                    }
+                    self.input.autocomplete = None;
+                    self.input.autocomplete_trigger_pos = None;
                 } else {
                     // Otherwise exit
                     self.should_exit = true;
@@ -358,6 +350,24 @@ impl TuiApp {
 
         // Draw status bar
         self.draw_status_bar(frame, areas.status);
+
+        // Draw autocomplete popup if active
+        if self.input.is_autocomplete_active() {
+            if let Some(autocomplete) = &self.input.autocomplete {
+                // Use calculated popup area, or create a default one
+                let popup_area = areas.popup.unwrap_or_else(|| {
+                    // Fallback: create popup area above input box
+                    let popup_height = 10.min(areas.conversation.height.saturating_sub(2));
+                    Rect {
+                        x: areas.input.x,
+                        y: areas.input.top().saturating_sub(popup_height),
+                        width: 50.min(areas.input.width),
+                        height: popup_height,
+                    }
+                });
+                autocomplete.render(frame, popup_area);
+            }
+        }
     }
 
     /// Draw the title bar
