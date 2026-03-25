@@ -29,7 +29,7 @@ impl MarkdownRenderer {
             match event {
                 // Start tags
                 Event::Start(tag) => match tag {
-                    Tag::Paragraph => {
+                    Tag::Paragraph(_) => {
                         in_paragraph = true;
                     }
                     Tag::Heading { level, .. } => {
@@ -45,7 +45,7 @@ impl MarkdownRenderer {
                             .add_modifier(Modifier::BOLD);
                         current_line.push(Span::styled(format!("{} ", prefix), style));
                     }
-                    Tag::BlockQuote => {
+                    Tag::BlockQuote(_) => {
                         quote_level += 1;
                         if !current_line.is_empty() {
                             lines.push(current_line.clone());
@@ -80,7 +80,7 @@ impl MarkdownRenderer {
                     Tag::List(_) => {
                         // List start, handled by Item
                     }
-                    Tag::Item => {
+                    Tag::Item(_) => {
                         if !current_line.is_empty() {
                             lines.push(current_line.clone());
                             current_line.clear();
@@ -89,13 +89,13 @@ impl MarkdownRenderer {
                         let style = Style::default().fg(Color::Yellow);
                         current_line.push(Span::styled(format!("{}• ", indent), style));
                     }
-                    Tag::Emphasis => {
+                    Tag::Emphasis(_, _) => {
                         // Start emphasis (italic) - use dim for terminals that don't support italic
                     }
-                    Tag::Strong => {
+                    Tag::Strong(_, _) => {
                         // Start strong (bold) - marker handled in text
                     }
-                    Tag::Strikethrough => {
+                    Tag::Strikethrough(_) => {
                         // Start strikethrough - use dim
                     }
                     Tag::Link { .. } => {
@@ -115,7 +115,7 @@ impl MarkdownRenderer {
                         // Table cell content handled in Text
                     }
                     Tag::FootnoteDefinition(_) => {}
-                    Tag::HtmlBlock => {}
+                    Tag::HtmlBlock(_) => {}
                 },
 
                 // End tags
