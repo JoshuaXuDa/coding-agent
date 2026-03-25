@@ -303,8 +303,8 @@ impl FileAutocomplete {
             )
             .highlight_style(
                 Style::default()
-                    .bg(Color::Blue)  // Blue background for selected item
-                    .fg(Color::White)  // White text for contrast
+                    .bg(Color::Rgb(20, 40, 80))  // Dark blue RGB for better terminal compatibility
+                    .fg(Color::Rgb(255, 255, 255))  // Pure white for contrast
                     .add_modifier(ratatui::style::Modifier::BOLD),
             );
 

@@ -29,6 +29,7 @@ use std::time::Duration;
 use tirea_agentos::AgentOs;
 use tokio::sync::mpsc;
 use tokio::time::{interval, timeout};
+use textwrap::{wrap, Options};
 
 /// Main TUI application
 pub struct TuiApp {
@@ -54,6 +55,8 @@ pub struct TuiApp {
     should_exit: bool,
     /// Last tool call (for tracking completion)
     last_tool_call: Option<String>,
+    /// Buffer for incomplete UTF-8 sequences
+    utf8_buffer: Vec<u8>,
 }
 
 impl TuiApp {
@@ -75,6 +78,7 @@ impl TuiApp {
             event_tx,
             should_exit: false,
             last_tool_call: None,
+            utf8_buffer: Vec::new(),
         })
     }
 
@@ -184,7 +188,8 @@ impl TuiApp {
                     return;
                 }
 
-                self.current_response.push_str(&delta);
+                // Use UTF-8 safe append instead of push_str
+                self.append_text_delta(&delta);
                 self.status.set_streaming(true);
             }
             TuiEvent::AgentToolCall { name, .. } => {
@@ -331,6 +336,57 @@ impl TuiApp {
         self.status.set_streaming(true);
     }
 
+    /// Append text delta with UTF-8 boundary handling
+    fn append_text_delta(&mut self, delta: &str) {
+        // Extend the buffer with new bytes
+        self.utf8_buffer.extend_from_slice(delta.as_bytes());
+
+        // Try to convert the entire buffer to a string
+        match String::from_utf8(std::mem::take(&mut self.utf8_buffer)) {
+            Ok(text) => {
+                // All bytes are valid UTF-8
+                self.current_response.push_str(&text);
+                // Buffer is already empty due to mem::take
+            }
+            Err(err) => {
+                // Some bytes are invalid UTF-8
+                let valid_len = err.utf8_error().valid_up_to();
+                let bytes = err.into_bytes();
+                if valid_len > 0 {
+                    // Append the valid portion
+                    let valid_text = String::from_utf8_lossy(&bytes[..valid_len]);
+                    self.current_response.push_str(&valid_text);
+                }
+                // Keep the incomplete bytes in buffer
+                self.utf8_buffer = bytes[valid_len..].to_vec();
+            }
+        }
+    }
+
+    /// Wrap text to fit within a given width, handling UTF-8 correctly
+    fn wrap_text(text: &str, width: usize) -> Vec<String> {
+        if text.is_empty() {
+            return vec![String::new()];
+        }
+
+        // Calculate available width (subtract prefix like "Agent: " or "You: ")
+        let available_width = width.saturating_sub(8);
+
+        if available_width < 10 {
+            // Too narrow, just return as-is
+            return vec![text.to_string()];
+        }
+
+        // Use textwrap with Unicode-aware word boundaries
+        let options = Options::new(available_width)
+            .break_words(false);
+
+        wrap(text, options)
+            .into_iter()
+            .map(|line| line.into_owned())
+            .collect()
+    }
+
     /// Draw the UI
     fn draw(&mut self, frame: &mut Frame) {
         let size = frame.size();
@@ -387,21 +443,67 @@ impl TuiApp {
 
     /// Draw the conversation area
     fn draw_conversation(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let mut lines = Vec::new();
+        use ratatui::text::{Text,};
+
+        let mut text = Text::default();
+        let available_width = area.width.saturating_sub(4) as usize;
+        let mut last_message_type: Option<&str> = None;
 
         for msg in &self.messages {
+            // Add separator between different message types
+            if let Some(last_type) = last_message_type {
+                let current_type = match msg {
+                    ChatMessage::User { .. } => "user",
+                    ChatMessage::Assistant { .. } => "assistant",
+                    _ => continue,
+                };
+
+                if last_type != current_type {
+                    // Add visual separator
+                    let separator = "─".repeat(available_width.min(40));
+                    text.extend(vec![
+                        Line::from(vec![
+                            Span::styled(separator.clone(), Style::default().fg(Color::DarkGray)),
+                        ]),
+                        Line::from(""),
+                    ]);
+                }
+            }
+
             match msg {
                 ChatMessage::User { content } => {
-                    lines.push(Line::from(vec![
-                        Span::styled("You: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                        Span::styled(content, Style::default().fg(Color::White)),
-                    ]));
+                    let wrapped_lines = Self::wrap_text(content, available_width);
+                    for (i, line) in wrapped_lines.iter().enumerate() {
+                        if i == 0 {
+                            text.push_line(Line::from(vec![
+                                Span::styled("You: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                                Span::styled(line.clone(), Style::default().fg(Color::White)),
+                            ]));
+                        } else {
+                            text.push_line(Line::from(vec![
+                                Span::styled("      ", Style::default()),
+                                Span::styled(line.clone(), Style::default().fg(Color::White)),
+                            ]));
+                        }
+                    }
+                    last_message_type = Some("user");
                 }
                 ChatMessage::Assistant { content } => {
-                    lines.push(Line::from(vec![
-                        Span::styled("Agent: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                        Span::styled(content, Style::default().fg(Color::White)),
-                    ]));
+                    let wrapped_lines = Self::wrap_text(content, available_width);
+                    for (i, line) in wrapped_lines.iter().enumerate() {
+                        if i == 0 {
+                            text.push_line(Line::from(vec![
+                                Span::styled("Agent: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                                Span::styled(line.clone(), Style::default().fg(Color::White)),
+                            ]));
+                        } else {
+                            text.push_line(Line::from(vec![
+                                Span::styled("       ", Style::default()),
+                                Span::styled(line.clone(), Style::default().fg(Color::White)),
+                            ]));
+                        }
+                    }
+                    last_message_type = Some("assistant");
                 }
                 ChatMessage::ToolCall { name, status } => {
                     let status_icon = match status {
@@ -409,33 +511,55 @@ impl TuiApp {
                         ToolStatus::Done => "✓",
                         ToolStatus::Error(_) => "✗",
                     };
-                    lines.push(Line::from(vec![
-                        Span::styled("  ", Style::default()),
-                        Span::styled(format!("[{}] Tool: {}", status_icon, name), Style::default().fg(Color::Yellow)),
+
+                    text.push_line(Line::from(vec![
+                        Span::styled("┌─ ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(status_icon, Style::default().fg(Color::Yellow)),
+                        Span::styled(" ", Style::default()),
+                        Span::styled(name.clone(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                     ]));
                 }
                 ChatMessage::System { content } => {
-                    lines.push(Line::from(vec![
+                    text.push_line(Line::from(vec![
                         Span::styled("System: ", Style::default().fg(Color::Gray)),
-                        Span::styled(content, Style::default().fg(Color::Gray)),
+                        Span::styled(content.clone(), Style::default().fg(Color::Gray)),
                     ]));
                 }
             }
         }
 
-        // Add current streaming response
+        // Add current streaming response with wrapping
         if !self.current_response.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("Agent: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                Span::styled(&self.current_response, Style::default().fg(Color::White)),
-                Span::styled("▌", Style::default().fg(Color::DarkGray)), // Cursor
-            ]));
+            let wrapped_lines = Self::wrap_text(&self.current_response, available_width);
+            let line_count = wrapped_lines.len();
+            for (i, line) in wrapped_lines.iter().enumerate() {
+                let is_last = i == line_count - 1;
+                if i == 0 {
+                    text.push_line(Line::from(vec![
+                        Span::styled("Agent: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                        Span::styled(line.clone(), Style::default().fg(Color::White)),
+                        if is_last {
+                            Span::styled("▌", Style::default().fg(Color::DarkGray))
+                        } else {
+                            Span::styled("", Style::default())
+                        },
+                    ]));
+                } else {
+                    text.push_line(Line::from(vec![
+                        Span::styled("       ", Style::default()),
+                        Span::styled(line.clone(), Style::default().fg(Color::White)),
+                        if is_last {
+                            Span::styled("▌", Style::default().fg(Color::DarkGray))
+                        } else {
+                            Span::styled("", Style::default())
+                        },
+                    ]));
+                }
+            }
         }
 
-        // Use Paragraph with wrap enabled for automatic text wrapping
-        let paragraph = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::ALL).title("Conversation"))
-            .wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(text)
+            .block(Block::default().borders(Borders::ALL).title("Conversation"));
 
         frame.render_widget(paragraph, area);
     }
@@ -443,6 +567,7 @@ impl TuiApp {
     /// Draw the status bar
     fn draw_status_bar(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
         let help_text = "Enter:发送 ↑↓:滚动 ESC:退出";
+
         let status_text = if self.status.is_streaming {
             format!("⏳ {} | {} | Tools: {} | Model: {}",
                 help_text,
