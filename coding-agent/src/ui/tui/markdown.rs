@@ -116,6 +116,8 @@ impl MarkdownRenderer {
                     }
                     Tag::FootnoteDefinition(_) => {}
                     Tag::HtmlBlock => {}
+                    Tag::Image { .. } => {}
+                    Tag::MetadataBlock(_) => {}
                 },
 
                 // End tags
