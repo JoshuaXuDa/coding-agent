@@ -440,6 +440,10 @@ impl TuiApp {
             TuiEvent::Input(_) => {
                 // Handled in key event handler
             }
+            TuiEvent::Mouse(_) => {
+                // Mouse events are handled in the main loop, not via TuiEvent channel
+                // This variant is here for completeness but shouldn't be used
+            }
         }
     }
 
@@ -742,11 +746,10 @@ impl TuiApp {
                         text.push_line(Line::from(vec![
                             Span::styled("💭 [思考内容 - 按Ctrl+T折叠]", Style::default().fg(Color::DarkGray)),
                         ]));
-                        for line in rendered.lines {
-                            text.push_line(Line::from(vec![
-                                Span::styled("  ", Style::default()),
-                                Span::styled(line.clone(), Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)),
-                            ]));
+                        // Add indentation prefix to each line
+                        for mut line in rendered.lines {
+                            line.spans.insert(0, Span::styled("  ", Style::default()));
+                            text.push_line(line);
                         }
                     } else {
                         // Collapsed: show brief indicator
@@ -767,11 +770,10 @@ impl TuiApp {
                     text.push_line(Line::from(vec![
                         Span::styled("Agent: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
                     ]));
-                    for line in rendered.lines {
-                        text.push_line(Line::from(vec![
-                            Span::styled("       ", Style::default()),
-                            Span::styled(line.clone(), Style::default().fg(Color::White)),
-                        ]));
+                    // Add indentation prefix to each line
+                    for mut line in rendered.lines {
+                        line.spans.insert(0, Span::styled("       ", Style::default()));
+                        text.push_line(line);
                     }
                     last_message_type = Some("assistant");
                 }

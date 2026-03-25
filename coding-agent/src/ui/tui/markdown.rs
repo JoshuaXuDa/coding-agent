@@ -19,7 +19,7 @@ impl MarkdownRenderer {
         let mut in_paragraph = false;
         let mut list_level = 0;
         let mut code_block = false;
-        let mut quote_level = 0;
+        let mut quote_level: usize = 0;
         let mut table_alignments = Vec::new();
         let mut in_table = false;
         let mut table_row = Vec::new();
@@ -277,13 +277,6 @@ impl MarkdownRenderer {
                     )]);
                 }
                 Event::FootnoteReference(_) => {}
-                Event::Image { .. } => {
-                    // Images - show as placeholder
-                    current_line.push(Span::styled(
-                        "[🖼️ Image]",
-                        Style::default().fg(Color::DarkGray),
-                    ));
-                }
             }
         }
 
@@ -292,7 +285,9 @@ impl MarkdownRenderer {
             lines.push(current_line);
         }
 
-        Text::from(lines)
+        // Convert Vec<Vec<Span>> to Vec<Line>
+        let line_items: Vec<Line> = lines.into_iter().map(Line::from).collect();
+        Text::from(line_items)
     }
 }
 
