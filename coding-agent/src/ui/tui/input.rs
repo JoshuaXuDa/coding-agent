@@ -211,16 +211,21 @@ impl InputWidget {
             KeyCode::Char(c) => {
                 // Check if we're still in autocomplete context
                 if let Some(trigger_pos) = self.autocomplete_trigger_pos {
-                    let current_text = self.text();
                     // If user typed space or other non-path character, exit autocomplete
                     if c == ' ' {
                         self.textarea.insert_char(c);
                         self.exit_autocomplete();
                     } else {
-                        // Otherwise insert character and update filter
+                        // Insert character first
                         self.textarea.insert_char(c);
+                        // Use the NEW text after insertion
+                        let new_text = self.text();
                         if let Some(autocomplete) = &mut self.autocomplete {
-                            let filter: String = current_text[trigger_pos + 1..].chars().chain(Some(c)).collect();
+                            let filter: String = if new_text.len() > trigger_pos + 1 {
+                                new_text[trigger_pos + 1..].chars().collect()
+                            } else {
+                                String::new()
+                            };
                             autocomplete.update_filter(filter);
                         }
                     }
