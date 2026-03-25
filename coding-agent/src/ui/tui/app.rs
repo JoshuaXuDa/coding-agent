@@ -20,7 +20,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, Wrap},
     Frame, Terminal,
 };
 use std::io;
@@ -377,21 +377,21 @@ impl TuiApp {
 
     /// Draw the conversation area
     fn draw_conversation(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let mut items = Vec::new();
+        let mut lines = Vec::new();
 
         for msg in &self.messages {
             match msg {
                 ChatMessage::User { content } => {
-                    items.push(ListItem::new(Line::from(vec![
+                    lines.push(Line::from(vec![
                         Span::styled("You: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                         Span::styled(content, Style::default().fg(Color::White)),
-                    ])));
+                    ]));
                 }
                 ChatMessage::Assistant { content } => {
-                    items.push(ListItem::new(Line::from(vec![
+                    lines.push(Line::from(vec![
                         Span::styled("Agent: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
                         Span::styled(content, Style::default().fg(Color::White)),
-                    ])));
+                    ]));
                 }
                 ChatMessage::ToolCall { name, status } => {
                     let status_icon = match status {
@@ -399,33 +399,35 @@ impl TuiApp {
                         ToolStatus::Done => "✓",
                         ToolStatus::Error(_) => "✗",
                     };
-                    items.push(ListItem::new(Line::from(vec![
+                    lines.push(Line::from(vec![
                         Span::styled("  ", Style::default()),
                         Span::styled(format!("[{}] Tool: {}", status_icon, name), Style::default().fg(Color::Yellow)),
-                    ])));
+                    ]));
                 }
                 ChatMessage::System { content } => {
-                    items.push(ListItem::new(Line::from(vec![
+                    lines.push(Line::from(vec![
                         Span::styled("System: ", Style::default().fg(Color::Gray)),
                         Span::styled(content, Style::default().fg(Color::Gray)),
-                    ])));
+                    ]));
                 }
             }
         }
 
         // Add current streaming response
         if !self.current_response.is_empty() {
-            items.push(ListItem::new(Line::from(vec![
+            lines.push(Line::from(vec![
                 Span::styled("Agent: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
                 Span::styled(&self.current_response, Style::default().fg(Color::White)),
                 Span::styled("▌", Style::default().fg(Color::DarkGray)), // Cursor
-            ])));
+            ]));
         }
 
-        let list = ratatui::widgets::List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("Conversation"));
+        // Use Paragraph with wrap enabled for automatic text wrapping
+        let paragraph = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::ALL).title("Conversation"))
+            .wrap(Wrap { trim: true });
 
-        frame.render_widget(list, area);
+        frame.render_widget(paragraph, area);
     }
 
     /// Draw the status bar
