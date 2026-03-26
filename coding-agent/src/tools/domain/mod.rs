@@ -4,6 +4,7 @@
 
 pub mod validation;
 pub mod xml_builder;
+pub mod json_builder;
 pub mod error_handler;
 pub mod file_operations;
 pub mod permissions;
@@ -17,6 +18,7 @@ pub mod doc_generator;
 
 pub use validation::*;
 pub use xml_builder::*;
+pub use json_builder::*;
 pub use error_handler::*;
 pub use file_operations::*;
 pub use permissions::*;

@@ -11,7 +11,7 @@ use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
 use crate::tools::domain::validation::{validate_non_empty_string, validate_path};
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
 use log::warn;
 
 /// Glob tool
@@ -125,31 +125,31 @@ impl Tool for GlobTool {
         Box::pin(async move {
             // Parse arguments
             let glob_args = Self::parse_args(&args)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                ;
 
             let base_path = Path::new(&glob_args.path);
 
             // Check if base path exists
             if !self.fs.exists(base_path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "glob",
                     "PATH_NOT_FOUND",
                     &format!("Base path not found: {}", glob_args.path),
                     &format!("The base path '{}' does not exist", glob_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("glob", xml));
+                return Ok(ToolResult::success("glob", json));
             }
 
             // Execute glob
             let matches = self.execute_glob(&glob_args.pattern, base_path)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                ;
 
             // Build XML response
-            let xml = XmlBuilder::build_glob_result_xml(&glob_args.pattern, matches)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+            let json = JsonBuilder::build_glob_results(&glob_args.pattern, matches)
+                ;
 
-            Ok(ToolResult::success("glob", xml))
+            Ok(ToolResult::success("glob", json))
         })
     }
 }

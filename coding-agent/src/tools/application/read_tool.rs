@@ -12,7 +12,7 @@ use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
 use crate::tools::domain::validation::{validate_path, validate_read_range};
-use crate::tools::domain::xml_builder::{XmlBuilder, ImageMetadata, PdfMetadata};
+use crate::tools::domain::json_builder::{JsonBuilder, ImageMetadata, PdfMetadata};
 use crate::tools::domain::file_type::{FileCategory, FileTypeDetector};
 use crate::tools::truncate_output;
 
@@ -259,58 +259,58 @@ impl Tool for ReadTool {
 
             // Check if path exists
             if !self.fs.exists(path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "read",
                     "FILE_NOT_FOUND",
                     &format!("File not found: {}", read_args.path),
                     &format!("The file '{}' does not exist", read_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("read", xml));
+                return Ok(ToolResult::success("read", json));
             }
 
             // Check if path is a file
             if !self.fs.is_file(path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "read",
                     "NOT_A_FILE",
                     &format!("Not a file: {}", read_args.path),
                     &format!("The path '{}' is not a file", read_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("read", xml));
+                return Ok(ToolResult::success("read", json));
             }
 
             // Detect file type
             let file_category = FileTypeDetector::detect_from_path(path)
-                .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                ;
 
             // Route to appropriate handler based on file type
             match file_category {
                 FileCategory::Text | FileCategory::Markdown | FileCategory::Json => {
                     // Read as text
                     let read_result = self.read_file_with_range(path, read_args.offset, read_args.limit).await
-                        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                        ;
 
                     // Truncate if too large
                     let content = truncate_output(&read_result.content);
 
                     // Build XML response with total line count
-                    let xml = XmlBuilder::build_file_content_xml(
+                    let json = JsonBuilder::build_file_content(
                         &read_args.path,
                         &content,
                         read_args.offset,
                         read_args.limit,
                         Some(read_result.total_lines),
-                    ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                    );
 
-                    Ok(ToolResult::success("read", xml))
+                    Ok(ToolResult::success("read", json))
                 }
 
                 FileCategory::Pdf => {
                     // Read PDF as binary
                     let data = self.fs.read_file_binary(path).await
-                        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                        ;
 
                     // Extract text and metadata
                     let (text_content, pdf_metadata) = extract_pdf_text(&data)
@@ -329,20 +329,20 @@ impl Tool for ReadTool {
                     };
 
                     // Build PDF XML
-                    let xml = XmlBuilder::build_pdf_xml(
+                    let json = JsonBuilder::build_pdf_result(
                         &read_args.path,
                         &text_content,
                         base64_content.as_deref(),
                         &pdf_metadata,
-                    ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                    );
 
-                    Ok(ToolResult::success("read", xml))
+                    Ok(ToolResult::success("read", json))
                 }
 
                 FileCategory::Image => {
                     // Read image as binary
                     let data = self.fs.read_file_binary(path).await
-                        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                        ;
 
                     // Extract image metadata
                     let format = path.extension()
@@ -360,41 +360,41 @@ impl Tool for ReadTool {
                     let base64_content = base64::engine::general_purpose::STANDARD.encode(&data);
 
                     // Build image XML
-                    let xml = XmlBuilder::build_image_xml(
+                    let json = JsonBuilder::build_image_result(
                         &read_args.path,
                         &base64_content,
                         &image_metadata,
-                    ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                    );
 
-                    Ok(ToolResult::success("read", xml))
+                    Ok(ToolResult::success("read", json))
                 }
 
                 FileCategory::Binary => {
                     // Read binary file
                     let data = self.fs.read_file_binary(path).await
-                        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                        ;
 
                     // Check if we can base64 encode
                     if FileTypeDetector::can_encode_base64(data.len(), file_category) {
                         // Base64 encode small binary
                         let base64_content = base64::engine::general_purpose::STANDARD.encode(&data);
-                        let xml = XmlBuilder::build_binary_xml(
+                        let json = JsonBuilder::build_binary_result(
                             &read_args.path,
                             &base64_content,
                             data.len(),
-                        ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                        );
 
-                        Ok(ToolResult::success("read", xml))
+                        Ok(ToolResult::success("read", json))
                     } else {
                         // File too large - return error with preview
                         let preview = hex_preview(&data, 32);
-                        let xml = XmlBuilder::build_binary_too_large_error(
+                        let json = JsonBuilder::build_binary_too_large_error(
                             &read_args.path,
                             data.len(),
                             &preview,
-                        ).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+                        );
 
-                        Ok(ToolResult::success("read", xml))
+                        Ok(ToolResult::success("read", json))
                     }
                 }
             }

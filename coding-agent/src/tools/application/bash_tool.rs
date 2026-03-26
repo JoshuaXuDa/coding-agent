@@ -12,7 +12,7 @@ use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::command::{CommandExecutor, CommandRequest};
 use crate::tools::domain::validation::{validate_command, validate_command_args, validate_path, validate_timeout};
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
 
 /// Bash tool
 ///
@@ -172,20 +172,20 @@ impl Tool for BashTool {
         Box::pin(async move {
             // Parse arguments
             let bash_args = Self::parse_args(&args)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                ;
 
             // Check if command is available
             let is_avail = self.executor.is_available(&bash_args.command);
 
             if !is_avail {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "bash",
                     "COMMAND_NOT_FOUND",
                     &format!("Command not found: {}", bash_args.command),
                     &format!("The command '{}' is not available", bash_args.command),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("bash", xml));
+                return Ok(ToolResult::success("bash", json));
             }
 
             // Build command request
@@ -193,7 +193,7 @@ impl Tool for BashTool {
 
             // Execute command
             let result = self.executor.execute(request).await
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                ;
 
             // Build XML response
             let command_display = if bash_args.args.is_empty() {
@@ -202,10 +202,10 @@ impl Tool for BashTool {
                 format!("{} {}", bash_args.command, bash_args.args.join(" "))
             };
 
-            let xml = XmlBuilder::build_command_result_xml(&command_display, &result)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+            let json = JsonBuilder::build_command_result(&command_display, &result)
+                ;
 
-            Ok(ToolResult::success("bash", xml))
+            Ok(ToolResult::success("bash", json))
         })
     }
 }

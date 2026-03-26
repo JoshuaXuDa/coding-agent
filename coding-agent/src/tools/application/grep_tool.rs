@@ -13,7 +13,7 @@ use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
 use crate::tools::domain::{
     validation::{validate_regex_pattern, MAX_GREP_MATCHES},
-    xml_builder::{XmlBuilder, GrepMatch},
+    json_builder::{JsonBuilder, GrepMatch},
     error_handler::ErrorHandler,
     async_bridge::execute_blocking,
 };
@@ -261,14 +261,14 @@ impl Tool for GrepTool {
 
             // Check if path exists
             if !self.fs.exists(base_path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "grep",
                     "PATH_NOT_FOUND",
                     &format!("Path not found: {}", grep_args.path),
                     &format!("The path '{}' does not exist", grep_args.path),
                 ).map_err(ErrorHandler::to_tool_error)?;
 
-                return Ok(ToolResult::success("grep", xml));
+                return Ok(ToolResult::success("grep", json));
             }
 
             // Execute grep (async operation)
@@ -277,10 +277,10 @@ impl Tool for GrepTool {
                 .map_err(ErrorHandler::to_tool_error)?;
 
             // Build XML response
-            let xml = XmlBuilder::build_grep_result_xml(&grep_args.pattern, matches)
+            let json = JsonBuilder::build_grep_results(&grep_args.pattern, matches)
                 .map_err(ErrorHandler::to_tool_error)?;
 
-            Ok(ToolResult::success("grep", xml))
+            Ok(ToolResult::success("grep", json))
         })
     }
 }

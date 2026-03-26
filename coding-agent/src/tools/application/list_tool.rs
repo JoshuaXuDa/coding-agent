@@ -11,7 +11,7 @@ use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
 
 /// List tool
 ///
@@ -20,8 +20,8 @@ pub struct ListTool {
     /// File system service
     fs: Arc<dyn FileSystem>,
 
-    /// XML builder service
-    xml_builder: XmlBuilder,
+    /// JSON builder service
+    json_builder: JsonBuilder,
 }
 
 impl ListTool {
@@ -29,7 +29,7 @@ impl ListTool {
     pub fn new(fs: Arc<dyn FileSystem>) -> Self {
         Self {
             fs,
-            xml_builder: XmlBuilder::new(),
+            json_builder: JsonBuilder::new(),
         }
     }
 
@@ -90,36 +90,36 @@ impl Tool for ListTool {
         Box::pin(async move {
             // Parse arguments
             let list_args = Self::parse_args(&args)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                ;
 
             // Check if path exists
             let path = Path::new(&list_args.path);
             if !self.fs.exists(path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "list",
                     "PATH_NOT_FOUND",
                     &format!("Path not found: {}", list_args.path),
                     &format!("The path '{}' does not exist", list_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("list", xml));
+                return Ok(ToolResult::success("list", json));
             }
 
             // Check if path is a directory
             if !self.fs.is_dir(path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "list",
                     "NOT_A_DIRECTORY",
                     &format!("Not a directory: {}", list_args.path),
                     &format!("The path '{}' is not a directory", list_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("list", xml));
+                return Ok(ToolResult::success("list", json));
             }
 
             // List directory
             let mut entries = self.fs.list_dir(path).await
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                ;
 
             // Filter hidden files if requested
             if !list_args.show_hidden {
@@ -127,10 +127,10 @@ impl Tool for ListTool {
             }
 
             // Build XML response
-            let xml = XmlBuilder::build_directory_xml(&list_args.path, entries)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+            let json = JsonBuilder::build_directory_listing(&list_args.path, entries)
+                ;
 
-            Ok(ToolResult::success("list", xml))
+            Ok(ToolResult::success("list", json))
         })
     }
 }
