@@ -39,3 +39,4 @@ Thumbs.db
 
 # Logs directory
 logs/
+.ipynb_checkpoints/
