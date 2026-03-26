@@ -1,13 +1,13 @@
 {
   "providers": {
     "bigmodel-coding": {
-      "endpoint": "https://open.bigmodel.cn/api/paas/v4",
+      "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4/",
       "auth": { "kind": "env", "name": "OPENAI_API_KEY" },
       "adapter_kind": "openai"
     }
   },
   "models": {
-    "glm": { "provider": "bigmodel-coding", "model": "GLM-4.7" }
+    "glm": { "provider": "bigmodel-coding", "model": "glm-4.7" }
   },
   "agents": [{
     "kind": "local",
