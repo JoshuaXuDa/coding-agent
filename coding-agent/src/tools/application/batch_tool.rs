@@ -3,8 +3,6 @@
 //! Executes multiple tool calls in parallel for improved performance.
 
 use anyhow::Result;
-use std::collections::HashMap;
-use std::sync::Arc;
 use std::pin::Pin;
 use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};

@@ -5,6 +5,8 @@
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::tools::domain::xml_builder::XmlBuilder;
@@ -155,11 +157,11 @@ impl Tool for TodoWriteTool {
             let todos = Self::parse_args(&args)
                 .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
-            // Get session ID from context
-            let session_id = context.session_id;
+            // Get call ID from context to use as session identifier
+            let call_id = context.call_id();
 
             // Save todos to storage
-            self.save_todos(session_id, &todos)
+            self.save_todos(call_id, &todos)
                 .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
             // Count active todos

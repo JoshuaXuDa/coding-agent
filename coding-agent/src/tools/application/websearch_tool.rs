@@ -171,11 +171,12 @@ impl Tool for WebSearchTool {
                 .map_err(|e: reqwest::Error| ToolError::ExecutionFailed(format!("Search request failed: {}", e)))?;
 
             // Check response status
-            if !response.status().is_success() {
+            let status = response.status();
+            if !status.is_success() {
                 let error_text = response.text().await.unwrap_or_default();
                 return Err(ToolError::ExecutionFailed(format!(
                     "Search error ({}): {}",
-                    response.status(),
+                    status,
                     error_text
                 )));
             }

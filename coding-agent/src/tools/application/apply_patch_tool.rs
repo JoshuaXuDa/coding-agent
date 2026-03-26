@@ -11,8 +11,7 @@ use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::tools::domain::xml_builder::XmlBuilder;
 
-#[cfg(feature = "patch-tool")]
-use diff::get_text_diff;
+// Note: diff crate is used for patch parsing
 
 /// ApplyPatch tool
 ///
@@ -159,12 +158,12 @@ impl ApplyPatchTool {
         for hunk in hunks {
             if hunk.old_start > 0 && hunk.old_start <= result_lines.len() {
                 // Remove old lines
-                let old_end = (hunk.old_start + hunk.old_count).min(result_lines.len() + 1);
+                let old_end = (hunk.old_start + hunk.old_lines.len()).min(result_lines.len() + 1);
                 result_lines.drain((hunk.old_start - 1)..(old_end - 1));
 
                 // Insert new lines
                 for (idx, line) in hunk.new_lines.iter().enumerate() {
-                    result_lines.insert((hunk.old_start - 1 + idx), line.clone());
+                    result_lines.insert(hunk.old_start - 1 + idx, line.clone());
                 }
             }
         }

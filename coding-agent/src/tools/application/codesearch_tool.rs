@@ -150,11 +150,12 @@ impl Tool for CodeSearchTool {
                 .map_err(|e: reqwest::Error| ToolError::ExecutionFailed(format!("Code search request failed: {}", e)))?;
 
             // Check response status
-            if !response.status().is_success() {
+            let status = response.status();
+            if !status.is_success() {
                 let error_text = response.text().await.unwrap_or_default();
                 return Err(ToolError::ExecutionFailed(format!(
                     "Code search error ({}): {}",
-                    response.status(),
+                    status,
                     error_text
                 )));
             }
