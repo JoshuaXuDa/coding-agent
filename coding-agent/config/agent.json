@@ -7,7 +7,7 @@
     }
   },
   "models": {
-    "glm": { "provider": "bigmodel-coding", "model": "GLM-4.5-air" }
+    "glm": { "provider": "bigmodel-coding", "model": "GLM-4.7" }
   },
   "agents": [{
     "kind": "local",
