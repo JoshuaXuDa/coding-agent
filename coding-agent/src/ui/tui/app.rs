@@ -82,6 +82,26 @@ impl TuiApp {
         let (event_tx, event_rx) = mpsc::unbounded_channel::<TuiEvent>();
         let (log_tx, log_rx) = mpsc::unbounded_channel::<crate::logging::LogEntry>();
 
+        // Send startup logs to debug panel
+        let _ = log_tx.send(crate::logging::LogEntry {
+            level: log::Level::Info,
+            module: Some("app".to_string()),
+            message: "TuiApp initialized successfully".to_string(),
+            timestamp: chrono::Local::now(),
+        });
+        let _ = log_tx.send(crate::logging::LogEntry {
+            level: log::Level::Info,
+            module: Some("app".to_string()),
+            message: "Press F12 to open debug panel for detailed logs".to_string(),
+            timestamp: chrono::Local::now(),
+        });
+        let _ = log_tx.send(crate::logging::LogEntry {
+            level: log::Level::Info,
+            module: Some("app".to_string()),
+            message: "Debug panel shows all agent execution logs".to_string(),
+            timestamp: chrono::Local::now(),
+        });
+
         Ok(Self {
             agent_os,
             messages: Vec::new(),
@@ -469,7 +489,15 @@ impl TuiApp {
         // Spawn agent task to process the message
         let agent_os = self.agent_os.clone();
         let event_tx = self.event_tx.clone();
-        let message = text;
+        let log_tx = self.log_tx.clone();
+        let message = text.clone();
+
+        let _ = log_tx.send(crate::logging::LogEntry {
+            level: log::Level::Info,
+            module: Some("app".to_string()),
+            message: format!("Starting agent task for message: {}", message),
+            timestamp: chrono::Local::now(),
+        });
 
         tokio::spawn(async move {
             use tirea::prelude::Message;
@@ -490,44 +518,134 @@ impl TuiApp {
                 initial_decisions: vec![],
             };
 
+            let _ = log_tx.send(crate::logging::LogEntry {
+                level: log::Level::Info,
+                module: Some("app".to_string()),
+                message: format!("Calling agent_os.run_stream() with agent_id: {}", run_request.agent_id),
+                timestamp: chrono::Local::now(),
+            });
+            let _ = log_tx.send(crate::logging::LogEntry {
+                level: log::Level::Debug,
+                module: Some("app".to_string()),
+                message: format!("Thread ID: {:?}", run_request.thread_id),
+                timestamp: chrono::Local::now(),
+            });
+
             match agent_os.run_stream(run_request).await {
                 Ok(mut stream) => {
+                    let _ = log_tx.send(crate::logging::LogEntry {
+                        level: log::Level::Info,
+                        module: Some("app".to_string()),
+                        message: "Agent stream created successfully, waiting for events...".to_string(),
+                        timestamp: chrono::Local::now(),
+                    });
+
+                    let mut event_count = 0u32;
+
                     while let Some(event) = stream.events.next().await {
+                        event_count += 1;
+                        let _ = log_tx.send(crate::logging::LogEntry {
+                            level: log::Level::Debug,
+                            module: Some("app".to_string()),
+                            message: format!("Event #{}: {:?}", event_count, std::mem::discriminant(&event)),
+                            timestamp: chrono::Local::now(),
+                        });
+
                         match event {
                             AgentEvent::TextDelta { delta, .. } => {
+                                let _ = log_tx.send(crate::logging::LogEntry {
+                                    level: log::Level::Debug,
+                                    module: Some("app".to_string()),
+                                    message: format!("TextDelta: {} chars", delta.len()),
+                                    timestamp: chrono::Local::now(),
+                                });
                                 let _ = event_tx.send(TuiEvent::AgentText(delta));
                             }
                             AgentEvent::ReasoningDelta { delta, .. } => {
-                                // Send reasoning content as separate event
+                                let _ = log_tx.send(crate::logging::LogEntry {
+                                    level: log::Level::Debug,
+                                    module: Some("app".to_string()),
+                                    message: format!("ReasoningDelta: {} chars", delta.len()),
+                                    timestamp: chrono::Local::now(),
+                                });
                                 let _ = event_tx.send(TuiEvent::AgentReasoning(delta));
                             }
                             AgentEvent::ToolCallStart { name, .. } => {
+                                let _ = log_tx.send(crate::logging::LogEntry {
+                                    level: log::Level::Info,
+                                    module: Some("app".to_string()),
+                                    message: format!("Tool call started: {}", name),
+                                    timestamp: chrono::Local::now(),
+                                });
                                 let _ = event_tx.send(TuiEvent::AgentToolCall {
                                     name: name.clone(),
                                     input: serde_json::json!({}),
                                 });
                             }
                             AgentEvent::ToolCallDone { .. } => {
+                                let _ = log_tx.send(crate::logging::LogEntry {
+                                    level: log::Level::Info,
+                                    module: Some("app".to_string()),
+                                    message: "Tool call completed".to_string(),
+                                    timestamp: chrono::Local::now(),
+                                });
                                 let _ = event_tx.send(TuiEvent::AgentToolDone {
                                     name: "tool".to_string(),
                                 });
                             }
                             AgentEvent::Error { message, .. } => {
+                                let _ = log_tx.send(crate::logging::LogEntry {
+                                    level: log::Level::Error,
+                                    module: Some("app".to_string()),
+                                    message: format!("Agent error event: {}", message),
+                                    timestamp: chrono::Local::now(),
+                                });
                                 let _ = event_tx.send(TuiEvent::AgentError(message));
                             }
                             _ => {
-                                // Ignore other events
+                                let _ = log_tx.send(crate::logging::LogEntry {
+                                    level: log::Level::Debug,
+                                    module: Some("app".to_string()),
+                                    message: format!("Other event type: {:?}", std::mem::discriminant(&event)),
+                                    timestamp: chrono::Local::now(),
+                                });
                             }
                         }
                     }
+
+                    let _ = log_tx.send(crate::logging::LogEntry {
+                        level: log::Level::Info,
+                        module: Some("app".to_string()),
+                        message: format!("Agent stream ended. Total events received: {}", event_count),
+                        timestamp: chrono::Local::now(),
+                    });
 
                     // Send response complete event
                     let _ = event_tx.send(TuiEvent::AgentResponseComplete);
                 }
                 Err(e) => {
+                    let _ = log_tx.send(crate::logging::LogEntry {
+                        level: log::Level::Error,
+                        module: Some("app".to_string()),
+                        message: format!("Failed to create agent stream: {}", e),
+                        timestamp: chrono::Local::now(),
+                    });
+                    let _ = log_tx.send(crate::logging::LogEntry {
+                        level: log::Level::Error,
+                        module: Some("app".to_string()),
+                        message: format!("Error type: {:?}", std::error::Error::source(&e)),
+                        timestamp: chrono::Local::now(),
+                    });
                     let _ = event_tx.send(TuiEvent::AgentError(e.to_string()));
                 }
             }
+
+            let _ = log_tx.send(crate::logging::LogEntry {
+                level: log::Level::Info,
+                module: Some("app".to_string()),
+                message: "Agent task completed".to_string(),
+                timestamp: chrono::Local::now(),
+            });
         });
 
         self.status.set_streaming(true);
