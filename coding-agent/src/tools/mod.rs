@@ -19,8 +19,12 @@ pub mod application;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tirea::prelude::Tool;
 use crate::platform::{create_filesystem, create_command_executor};
+
+/// Global tool registry (for tools that need access to other tools)
+static TOOL_REGISTRY: OnceLock<Arc<HashMap<String, Arc<dyn Tool>>>> = OnceLock::new();
 
 /// Macro to collect all tool registrations
 ///
@@ -66,6 +70,38 @@ macro_rules! collect_tools {
             $tools.insert("bash".to_string(), Arc::new(
                 crate::tools::application::bash_tool::BashTool::new($executor)
             ) as Arc<dyn Tool>);
+
+            // Standalone tools (no dependencies)
+            $tools.insert("todowrite".to_string(), Arc::new(
+                crate::tools::application::todo_tool::TodoWriteTool::new()
+            ) as Arc<dyn Tool>);
+
+            $tools.insert("batch".to_string(), Arc::new(
+                crate::tools::application::batch_tool::BatchTool::new()
+            ) as Arc<dyn Tool>);
+
+            // Web tools (behind feature flags)
+            #[cfg(feature = "web-tools")]
+            $tools.insert("webfetch".to_string(), Arc::new(
+                crate::tools::application::webfetch_tool::WebFetchTool::new()
+            ) as Arc<dyn Tool>);
+
+            // Patch tools (behind feature flags)
+            #[cfg(feature = "patch-tool")]
+            $tools.insert("apply_patch".to_string(), Arc::new(
+                crate::tools::application::apply_patch_tool::ApplyPatchTool::new()
+            ) as Arc<dyn Tool>);
+
+            // Search tools (behind feature flags)
+            #[cfg(feature = "websearch")]
+            $tools.insert("websearch".to_string(), Arc::new(
+                crate::tools::application::websearch_tool::WebSearchTool::new()
+            ) as Arc<dyn Tool>);
+
+            #[cfg(feature = "codesearch")]
+            $tools.insert("codesearch".to_string(), Arc::new(
+                crate::tools::application::codesearch_tool::CodeSearchTool::new()
+            ) as Arc<dyn Tool>);
         }
     };
 }
@@ -95,7 +131,15 @@ pub fn build_tool_map() -> HashMap<String, Arc<dyn Tool>> {
     // Register all tools using the collect_tools macro
     collect_tools!(tools, fs, executor);
 
+    // Set the global tool registry for tools that need access to other tools
+    let _ = TOOL_REGISTRY.set(Arc::new(tools.clone()));
+
     tools
+}
+
+/// Get the global tool registry (for tools that need access to other tools)
+pub fn get_tool_registry() -> Option<Arc<HashMap<String, Arc<dyn Tool>>>> {
+    TOOL_REGISTRY.get().cloned()
 }
 
 /// Maximum output size before truncation (50KB)
@@ -182,7 +226,19 @@ mod tests {
     #[test]
     fn test_build_tool_map() {
         let tools = build_tool_map();
-        assert_eq!(tools.len(), 9);
+        let mut expected_count = 11; // Base tools
+
+        // All features are enabled by default
+        #[cfg(all(feature = "web-tools", feature = "patch-tool", feature = "websearch", feature = "codesearch"))]
+        {
+            expected_count += 4; // webfetch, apply_patch, websearch, codesearch
+            assert!(tools.contains_key("webfetch"));
+            assert!(tools.contains_key("apply_patch"));
+            assert!(tools.contains_key("websearch"));
+            assert!(tools.contains_key("codesearch"));
+        }
+
+        assert_eq!(tools.len(), expected_count);
         assert!(tools.contains_key("glob"));
         assert!(tools.contains_key("grep"));
         assert!(tools.contains_key("read"));
@@ -192,5 +248,19 @@ mod tests {
         assert!(tools.contains_key("list"));
         assert!(tools.contains_key("stat"));
         assert!(tools.contains_key("head_tail"));
+        assert!(tools.contains_key("todowrite"));
+        assert!(tools.contains_key("batch"));
+    }
+
+    #[test]
+    #[cfg(feature = "minimal")]
+    fn test_build_tool_map_minimal() {
+        let tools = build_tool_map();
+        // Minimal build should only have base tools (11)
+        assert_eq!(tools.len(), 11);
+        assert!(!tools.contains_key("webfetch"));
+        assert!(!tools.contains_key("apply_patch"));
+        assert!(!tools.contains_key("websearch"));
+        assert!(!tools.contains_key("codesearch"));
     }
 }

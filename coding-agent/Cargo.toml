@@ -55,11 +55,28 @@ unicode-width = "0.1"
 # Markdown parsing
 pulldown-cmark = "0.11"
 
+# HTTP client for web tools (WebFetch, WebSearch, CodeSearch)
+reqwest = { version = "0.11", features = ["json", "stream"], optional = true }
+
+# HTML to Markdown conversion (WebFetch)
+html2md = { version = "0.2", optional = true }
+
+# Patch application (ApplyPatch)
+diff = { version = "0.1", optional = true }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[features]
+default = ["web-tools", "websearch", "codesearch", "patch-tool"]
+web-tools = ["reqwest", "html2md"]
+websearch = ["web-tools", "reqwest/stream"]
+codesearch = ["web-tools"]
+patch-tool = ["diff"]
+minimal = []  # Minimal build without external dependencies
 
 [[example]]
 name = "test_glm"
