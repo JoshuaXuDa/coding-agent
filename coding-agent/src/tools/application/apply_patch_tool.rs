@@ -163,7 +163,7 @@ impl ApplyPatchTool {
 
                 // Insert new lines
                 for (idx, line) in hunk.new_lines.iter().enumerate() {
-                    result_lines.insert(hunk.old_start - 1 + idx, line.clone());
+                    result_lines.insert(hunk.old_start - 1 + idx, line.as_str());
                 }
             }
         }
