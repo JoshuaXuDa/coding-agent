@@ -11,6 +11,7 @@ use crate::ui::tui::{
     status_bar::StatusBar,
     debug_panel::DebugPanel,
     markdown::MarkdownRenderer,
+    selection::{TextSelection, SelectionTarget},
 };
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent},
@@ -73,6 +74,14 @@ pub struct TuiApp {
     log_rx: mpsc::UnboundedReceiver<crate::logging::LogEntry>,
     /// Log event sender
     log_tx: mpsc::UnboundedSender<crate::logging::LogEntry>,
+    /// Active text selection
+    selection: Option<TextSelection>,
+    /// Clipboard copy feedback message (text, instant)
+    copy_feedback: Option<(String, std::time::Instant)>,
+    /// Cached conversation line count for selection operations
+    cached_conversation_line_count: usize,
+    /// Cached debug panel line count for selection
+    cached_debug_line_count: usize,
 }
 
 impl TuiApp {
@@ -122,6 +131,10 @@ impl TuiApp {
             show_debug_panel: false,
             log_rx,
             log_tx: log_tx.clone(),
+            selection: None,
+            copy_feedback: None,
+            cached_conversation_line_count: 0,
+            cached_debug_line_count: 0,
         })
     }
 
@@ -282,6 +295,8 @@ impl TuiApp {
                     self.toggle_last_thinking();
                     return;
                 }
+                // Clear selection on key input
+                self.selection = None;
                 // Pass to input widget for all other keys
                 if self.input.handle_key_event(key) {
                     // User wants to send the message (only happens on Enter)
@@ -294,10 +309,12 @@ impl TuiApp {
     /// Handle mouse events
     fn handle_mouse_event(&mut self, event: crossterm::event::MouseEvent) {
         use crossterm::event::{MouseButton, MouseEventKind};
+        use crate::ui::tui::selection::TextPosition;
 
         match event.kind {
             // Scroll wheel - scroll conversation or debug panel
             MouseEventKind::ScrollUp => {
+                self.selection = None;
                 if self.is_in_debug_panel(event.column, event.row) {
                     self.debug_panel.scroll_up();
                 } else if self.is_in_conversation_area(event.column, event.row) {
@@ -305,6 +322,7 @@ impl TuiApp {
                 }
             }
             MouseEventKind::ScrollDown => {
+                self.selection = None;
                 if self.is_in_debug_panel(event.column, event.row) {
                     self.debug_panel.scroll_down();
                 } else if self.is_in_conversation_area(event.column, event.row) {
@@ -312,10 +330,118 @@ impl TuiApp {
                 }
             }
 
-            // Left click - toggle thinking blocks
+            // Left click - toggle thinking blocks or start selection
             MouseEventKind::Down(MouseButton::Left) => {
                 if self.is_click_on_thinking_block(event.column, event.row) {
                     self.toggle_last_thinking();
+                    self.selection = None;
+                    return;
+                }
+
+                // Start text selection
+                let target = if self.is_in_debug_panel(event.column, event.row) {
+                    if let Some(debug_area) = self.cached_areas.as_ref().and_then(|a| a.debug) {
+                        let pos = crate::ui::tui::selection::mouse_to_text_position(
+                            event.column, event.row,
+                            debug_area, self.cached_debug_line_count,
+                            self.debug_panel.scroll_offset(),
+                        );
+                        pos.map(|p| (p, SelectionTarget::DebugPanel))
+                    } else {
+                        None
+                    }
+                } else if self.is_in_conversation_area(event.column, event.row) {
+                    let line_count = self.cached_conversation_line_count;
+                    let pos = crate::ui::tui::selection::mouse_to_text_position(
+                        event.column, event.row,
+                        self.cached_areas.as_ref().unwrap().conversation,
+                        line_count,
+                        self.conversation_scroll,
+                    );
+                    pos.map(|p| (p, SelectionTarget::Conversation))
+                } else {
+                    None
+                };
+
+                if let Some((pos, tgt)) = target {
+                    self.selection = Some(TextSelection::new(pos, tgt));
+                } else {
+                    self.selection = None;
+                }
+            }
+
+            // Mouse drag - update selection end
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if let Some(sel) = &mut self.selection {
+                    sel.dragging = true;
+                    let (area, line_count, scroll) = match sel.target {
+                        SelectionTarget::Conversation => (
+                            self.cached_areas.as_ref().map(|a| a.conversation),
+                            self.cached_conversation_line_count,
+                            self.conversation_scroll,
+                        ),
+                        SelectionTarget::DebugPanel => (
+                            self.cached_areas.as_ref().and_then(|a| a.debug),
+                            self.cached_debug_line_count,
+                            self.debug_panel.scroll_offset(),
+                        ),
+                    };
+                    if let (Some(area), lc, sc) = (area, line_count, scroll) {
+                        if let Some(pos) = crate::ui::tui::selection::mouse_to_text_position(
+                            event.column, event.row, area, lc, sc,
+                        ) {
+                            sel.update_end(pos);
+                        }
+                    }
+                }
+            }
+
+            // Mouse release - copy selected text to clipboard
+            MouseEventKind::Up(MouseButton::Left) => {
+                if let Some(ref sel) = self.selection {
+                    if sel.dragging && !sel.is_empty() {
+                        let content: Option<String> = match sel.target {
+                            SelectionTarget::Conversation => {
+                                self.build_conversation_text_for_selection()
+                                    .and_then(|t| {
+                                        let extracted = crate::ui::tui::selection::extract_selected_text(&t, sel);
+                                        if extracted.is_empty() { None } else { Some(extracted) }
+                                    })
+                            }
+                            SelectionTarget::DebugPanel => {
+                                // Debug panel text extraction not cached; skip for now
+                                None
+                            }
+                        };
+
+                        if let Some(content) = content {
+                            if !content.is_empty() {
+                                let char_count = content.chars().count();
+                                match arboard::Clipboard::new() {
+                                    Ok(mut cb) => {
+                                        match cb.set_text(&content) {
+                                            Ok(()) => self.copy_feedback = Some((
+                                                format!("已复制 {} 字", char_count),
+                                                std::time::Instant::now(),
+                                            )),
+                                            Err(_) => self.copy_feedback = Some((
+                                                "复制失败".to_string(),
+                                                std::time::Instant::now(),
+                                            )),
+                                        }
+                                    }
+                                    Err(_) => self.copy_feedback = Some((
+                                        "剪贴板不可用".to_string(),
+                                        std::time::Instant::now(),
+                                    )),
+                                }
+                            }
+                        }
+                    }
+                }
+                // Stop dragging but keep selection visible
+                if let Some(ref mut sel) = self.selection {
+                    sel.dragging = false;
                 }
             }
 
@@ -367,6 +493,7 @@ impl TuiApp {
     fn handle_tui_event(&mut self, event: TuiEvent) {
         match event {
             TuiEvent::AgentReasoning(delta) => {
+                self.selection = None;
                 // Filter out standalone empty lines
                 if delta == "\n" && self.current_reasoning.is_empty() {
                     return;
@@ -377,6 +504,7 @@ impl TuiApp {
                 self.status.set_streaming(true);
             }
             TuiEvent::AgentText(delta) => {
+                self.selection = None;
                 // Filter out standalone empty lines
                 if delta == "\n" && self.current_response.is_empty() {
                     return;
@@ -757,6 +885,11 @@ impl TuiApp {
         // Draw debug panel if enabled
         if self.show_debug_panel {
             if let Some(debug_area) = areas.debug {
+                // Count visible debug lines before rendering for selection
+                let visible_height = debug_area.height.saturating_sub(2) as usize;
+                let start_idx = self.debug_panel.scroll_offset();
+                let total_filtered = self.debug_panel.filtered_count();
+                self.cached_debug_line_count = (start_idx + visible_height).min(total_filtered);
                 self.debug_panel.render(frame, debug_area);
             }
         }
@@ -970,14 +1103,116 @@ impl TuiApp {
             }
         }
 
+        // Cache line count and apply selection highlight
+        self.cached_conversation_line_count = text.lines.len();
+        if let Some(ref sel) = self.selection {
+            if sel.target == SelectionTarget::Conversation {
+                crate::ui::tui::selection::apply_selection_highlight(&mut text, sel);
+            }
+        }
+
         let paragraph = Paragraph::new(text)
             .block(Block::default().borders(Borders::ALL).title("Conversation"));
 
         frame.render_widget(paragraph, area);
     }
 
+    /// Build an owned Text from messages for text extraction during copy.
+    fn build_conversation_text_for_selection(&self) -> Option<ratatui::text::Text<'static>> {
+        use ratatui::text::{Span, Text};
+
+        let available_width = self.cached_areas.as_ref()
+            .map(|a| a.conversation.width.saturating_sub(4) as usize)?;
+
+        let mut text = Text::default();
+        let visible_messages: Vec<_> = self.messages.iter()
+            .skip(self.conversation_scroll)
+            .collect();
+
+        for msg in visible_messages {
+            match msg {
+                ChatMessage::User { content } => {
+                    let wrapped = Self::wrap_text(content, available_width);
+                    for (i, line) in wrapped.iter().enumerate() {
+                        let prefix = if i == 0 { "You: " } else { "      " };
+                        text.push_line(Line::from(Span::raw(format!("{}{}", prefix, line))));
+                    }
+                }
+                ChatMessage::Assistant { content } => {
+                    text.push_line(Line::from(Span::raw("Agent: ")));
+                    let rendered = MarkdownRenderer::render(content, available_width);
+                    for line in rendered.lines {
+                        let plain: String = line.spans.iter().map(|s| s.content.clone()).collect();
+                        text.push_line(Line::from(Span::raw(format!("       {}", plain))));
+                    }
+                }
+                ChatMessage::Thinking { content, expanded } => {
+                    if *expanded {
+                        text.push_line(Line::from(Span::raw("💭 [思考内容]")));
+                        let rendered = MarkdownRenderer::render(content, available_width);
+                        for line in rendered.lines {
+                            let plain: String = line.spans.iter().map(|s| s.content.clone()).collect();
+                            text.push_line(Line::from(Span::raw(format!("  {}", plain))));
+                        }
+                    } else {
+                        text.push_line(Line::from(Span::raw(format!(
+                            "💭 [思考内容已折叠 - {}字]",
+                            content.chars().count()
+                        ))));
+                    }
+                    text.push_line(Line::from(""));
+                }
+                ChatMessage::ToolCall { name, status } => {
+                    let icon = match status {
+                        ToolStatus::Running => "⏳",
+                        ToolStatus::Done => "✓",
+                        ToolStatus::Error(_) => "✗",
+                    };
+                    text.push_line(Line::from(Span::raw(format!("┌─ {} {}", icon, name))));
+                }
+                ChatMessage::System { content } => {
+                    text.push_line(Line::from(Span::raw(format!("System: {}", content))));
+                }
+            }
+        }
+
+        // Add current streaming content
+        if !self.current_reasoning.is_empty() {
+            text.push_line(Line::from(Span::raw("💭 [思考中...]")));
+            let wrapped = Self::wrap_text(&self.current_reasoning, available_width);
+            for line in &wrapped {
+                text.push_line(Line::from(Span::raw(format!("  {}", line))));
+            }
+            text.push_line(Line::from(""));
+        }
+        if !self.current_response.is_empty() {
+            let wrapped = Self::wrap_text(&self.current_response, available_width);
+            for (i, line) in wrapped.iter().enumerate() {
+                let prefix = if i == 0 { "Agent: " } else { "       " };
+                text.push_line(Line::from(Span::raw(format!("{}{}", prefix, line))));
+            }
+        }
+
+        Some(text)
+    }
+
     /// Draw the status bar
-    fn draw_status_bar(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+    fn draw_status_bar(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        // Check if we have copy feedback to show (expires after 3 seconds)
+        let feedback = self.copy_feedback.as_ref()
+            .filter(|(_, instant)| instant.elapsed() < std::time::Duration::from_secs(3));
+
+        if let Some((msg, _)) = feedback {
+            let widget = Paragraph::new(Line::from(vec![
+                Span::styled("📋 ", Style::default()),
+                Span::styled(msg.clone(), Style::default().fg(Color::Green)),
+            ]));
+            frame.render_widget(widget, area);
+            return;
+        }
+
+        // Expire old feedback
+        self.copy_feedback = None;
         let help_text = "Enter:发送 滚轮/↑↓:滚动 点击/Ctrl+T:切换 ESC:退出";
 
         let status_text = if self.status.is_streaming {

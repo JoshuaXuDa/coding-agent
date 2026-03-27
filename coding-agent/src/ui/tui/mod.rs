@@ -12,6 +12,7 @@ pub mod status_bar;
 pub mod autocomplete;
 pub mod debug_panel;
 pub mod markdown;
+pub mod selection;
 
 pub use app::TuiApp;
 pub use input_status::{InputStatus, InputStatusIndicator};

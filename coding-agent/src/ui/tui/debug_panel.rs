@@ -146,6 +146,16 @@ impl DebugPanel {
         self.scroll_offset = (self.scroll_offset + 10).min(max_offset);
     }
 
+    /// Get current scroll offset
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    /// Get total filtered log count
+    pub fn filtered_count(&self) -> usize {
+        self.logs.iter().filter(|e| e.level <= self.level_filter).count()
+    }
+
     /// Get the number of visible log entries
     fn visible_log_count(&self) -> usize {
         // Approximate - will be calculated based on actual area during render
