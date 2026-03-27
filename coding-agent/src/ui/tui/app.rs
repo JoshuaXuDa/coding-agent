@@ -14,7 +14,7 @@ use crate::ui::tui::{
     selection::{TextSelection, SelectionTarget},
 };
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent},
+    event::{self, KeyCode, KeyEvent},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -143,7 +143,7 @@ impl TuiApp {
         // Setup terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(stdout, EnterAlternateScreen)?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
@@ -155,7 +155,6 @@ impl TuiApp {
         execute!(
             terminal.backend_mut(),
             LeaveAlternateScreen,
-            DisableMouseCapture
         )?;
         terminal.show_cursor()?;
 
@@ -182,7 +181,6 @@ impl TuiApp {
                     if event::poll(Duration::from_millis(50))? {
                         match event::read()? {
                             event::Event::Key(key) => self.handle_key_event(key),
-                            event::Event::Mouse(mouse) => self.handle_mouse_event(mouse),
                             _ => {}
                         }
                     }
@@ -253,8 +251,12 @@ impl TuiApp {
                     if self.input.handle_key_event(key) {
                         self.send_message();
                     }
+                } else if key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    self.conversation_scroll = self.conversation_scroll.saturating_sub(10);
                 } else if self.show_debug_panel {
                     self.debug_panel.page_up();
+                } else {
+                    self.conversation_scroll = self.conversation_scroll.saturating_sub(10);
                 }
             }
             KeyCode::PageDown => {
@@ -263,8 +265,12 @@ impl TuiApp {
                     if self.input.handle_key_event(key) {
                         self.send_message();
                     }
+                } else if key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
+                    self.conversation_scroll = self.conversation_scroll.saturating_add(10);
                 } else if self.show_debug_panel {
                     self.debug_panel.page_down();
+                } else {
+                    self.conversation_scroll = self.conversation_scroll.saturating_add(10);
                 }
             }
             KeyCode::Up => {
@@ -295,8 +301,6 @@ impl TuiApp {
                     self.toggle_last_thinking();
                     return;
                 }
-                // Clear selection on key input
-                self.selection = None;
                 // Pass to input widget for all other keys
                 if self.input.handle_key_event(key) {
                     // User wants to send the message (only happens on Enter)
