@@ -83,7 +83,7 @@ pub fn mouse_to_text_position(
     let content_width = area.width.saturating_sub(2);
     let content_height = area.height.saturating_sub(2);
 
-    if content_x >= content_width || content_y >= content_height {
+    if content_x > content_width || content_y > content_height {
         return None;
     }
 

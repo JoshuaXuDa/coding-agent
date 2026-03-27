@@ -356,7 +356,7 @@ impl TuiApp {
                         event.column, event.row,
                         self.cached_areas.as_ref().unwrap().conversation,
                         line_count,
-                        self.conversation_scroll,
+                        0, // scroll already applied in draw_conversation via .skip()
                     );
                     pos.map(|p| (p, SelectionTarget::Conversation))
                 } else {
@@ -378,7 +378,7 @@ impl TuiApp {
                         SelectionTarget::Conversation => (
                             self.cached_areas.as_ref().map(|a| a.conversation),
                             self.cached_conversation_line_count,
-                            self.conversation_scroll,
+                            0, // scroll already applied in draw_conversation via .skip()
                         ),
                         SelectionTarget::DebugPanel => (
                             self.cached_areas.as_ref().and_then(|a| a.debug),
@@ -889,7 +889,7 @@ impl TuiApp {
                 let visible_height = debug_area.height.saturating_sub(2) as usize;
                 let start_idx = self.debug_panel.scroll_offset();
                 let total_filtered = self.debug_panel.filtered_count();
-                self.cached_debug_line_count = (start_idx + visible_height).min(total_filtered);
+                self.cached_debug_line_count = total_filtered;
                 self.debug_panel.render(frame, debug_area);
             }
         }
