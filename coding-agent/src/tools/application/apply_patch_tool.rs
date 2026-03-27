@@ -9,9 +9,16 @@ use std::pin::Pin;
 use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
+use serde_json::json;
+use std::sync::LazyLock;
+use regex::Regex;
 
 // Note: diff crate is used for patch parsing
+
+static HUNK_HEADER_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"@@\s*-(\d+),?(\d+)?\s*\+(\d+),?(\d+)?\s*@@").expect("valid hunk header regex")
+});
 
 /// ApplyPatch tool
 ///
@@ -118,8 +125,7 @@ impl ApplyPatchTool {
     /// Parse hunk header line
     fn parse_hunk_header(&self, line: &str) -> Result<HunkInfo> {
         // Parse: @@ -old_start,old_count +new_start,new_count @@
-        let re = regex::Regex::new(r"@@\s*-(\d+),?(\d+)?\s*\+(\d+),?(\d+)?\s*@@").unwrap();
-        let caps = re.captures(line)
+        let caps = HUNK_HEADER_REGEX.captures(line)
             .ok_or_else(|| anyhow::anyhow!("Invalid hunk header format"))?;
 
         let old_start: usize = caps.get(1)
@@ -238,14 +244,12 @@ impl Tool for ApplyPatchTool {
                 hunks.len()
             );
 
-            // Build XML response
-            let xml = XmlBuilder::build_success(
-                "apply_patch",
-                "Patch applied",
-                &output,
-            ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-            Ok(ToolResult::success("apply_patch", xml))
+            let data = json!({
+                "hunks_found": hunks.len(),
+                "message": output
+            });
+            let result = JsonBuilder::build_success("apply_patch", data);
+            Ok(ToolResult::success("apply_patch", result))
         })
     }
 }

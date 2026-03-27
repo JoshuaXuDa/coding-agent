@@ -172,7 +172,7 @@ impl Tool for BashTool {
         Box::pin(async move {
             // Parse arguments
             let bash_args = Self::parse_args(&args)
-                ;
+                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
             // Check if command is available
             let is_avail = self.executor.is_available(&bash_args.command);
@@ -193,7 +193,7 @@ impl Tool for BashTool {
 
             // Execute command
             let result = self.executor.execute(request).await
-                ;
+                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
             // Build XML response
             let command_display = if bash_args.args.is_empty() {

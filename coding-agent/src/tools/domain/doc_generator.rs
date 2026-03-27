@@ -115,6 +115,10 @@ mod tests {
     use super::*;
     use crate::tools::domain::tool_metadata::{ToolMetadata, ToolExample, DisclosurePolicy};
     use std::collections::HashMap;
+    use std::sync::Arc;
+    use async_trait::async_trait;
+    use tirea::prelude::Tool;
+    use tirea_contract::ToolCallContext;
 
     fn create_test_registration(id: &'static str, priority: u8, disclosure: DisclosurePolicy) -> ToolRegistration {
         let mut params = HashMap::new();
@@ -124,7 +128,8 @@ mod tests {
             id,
             factory: |_fs, _exec| {
                 struct TestTool;
-                impl tirea::prelude::Tool for TestTool {
+                #[async_trait]
+                impl Tool for TestTool {
                     fn descriptor(&self) -> tirea::prelude::ToolDescriptor {
                         tirea::prelude::ToolDescriptor {
                             id: "test".to_string(),
@@ -136,12 +141,12 @@ mod tests {
                         }
                     }
 
-                    fn execute<'life0, 'life1, 'life2, 'async_trait>(
-                        &'life0 self,
+                    async fn execute(
+                        &self,
                         _args: serde_json::Value,
-                        _context: &'life1 tirea_contract::ToolCallContext<'life2>,
-                    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<tirea::prelude::ToolResult, tirea::prelude::ToolError>> + Send + 'async_trait>> {
-                        Box::pin(async { Ok(tirea::prelude::ToolResult::success("test", "test".to_string())) })
+                        _context: &ToolCallContext<'_>,
+                    ) -> Result<tirea::prelude::ToolResult, tirea::prelude::ToolError> {
+                        Ok(tirea::prelude::ToolResult::success("test", "test".to_string()))
                     }
                 }
                 Arc::new(TestTool)
@@ -189,11 +194,12 @@ mod tests {
         let reg3 = create_test_registration("priority", 10, DisclosurePolicy::Explicit);
 
         // No tools used yet
-        let filtered = filter_tools_by_context(&[reg1, reg2, reg3], &[], 5);
+        let registrations = [reg1, reg2, reg3];
+        let filtered = filter_tools_by_context(&registrations, &[], 5);
         assert_eq!(filtered.len(), 2); // always + priority <= 5
 
         // After using "always" tool
-        let filtered = filter_tools_by_context(&[reg1, reg2, reg3], &["always".to_string()], 5);
+        let filtered = filter_tools_by_context(&registrations, &["always".to_string()], 5);
         assert_eq!(filtered.len(), 3); // all three
     }
 

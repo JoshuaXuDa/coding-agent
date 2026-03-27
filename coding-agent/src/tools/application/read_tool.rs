@@ -283,14 +283,14 @@ impl Tool for ReadTool {
 
             // Detect file type
             let file_category = FileTypeDetector::detect_from_path(path)
-                ;
+                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
             // Route to appropriate handler based on file type
             match file_category {
                 FileCategory::Text | FileCategory::Markdown | FileCategory::Json => {
                     // Read as text
                     let read_result = self.read_file_with_range(path, read_args.offset, read_args.limit).await
-                        ;
+                        .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
                     // Truncate if too large
                     let content = truncate_output(&read_result.content);
@@ -310,7 +310,7 @@ impl Tool for ReadTool {
                 FileCategory::Pdf => {
                     // Read PDF as binary
                     let data = self.fs.read_file_binary(path).await
-                        ;
+                        .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
                     // Extract text and metadata
                     let (text_content, pdf_metadata) = extract_pdf_text(&data)
@@ -342,7 +342,7 @@ impl Tool for ReadTool {
                 FileCategory::Image => {
                     // Read image as binary
                     let data = self.fs.read_file_binary(path).await
-                        ;
+                        .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
                     // Extract image metadata
                     let format = path.extension()
@@ -372,7 +372,7 @@ impl Tool for ReadTool {
                 FileCategory::Binary => {
                     // Read binary file
                     let data = self.fs.read_file_binary(path).await
-                        ;
+                        .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
                     // Check if we can base64 encode
                     if FileTypeDetector::can_encode_base64(data.len(), file_category) {

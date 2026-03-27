@@ -40,3 +40,8 @@ Thumbs.db
 # Logs directory
 logs/
 .ipynb_checkpoints/
+
+# Coding-agent subdirectory runtime data
+coding-agent/examples/
+coding-agent/sessions/
+coding-agent/logs/

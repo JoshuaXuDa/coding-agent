@@ -7,7 +7,8 @@ use std::pin::Pin;
 use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
+use serde_json::json;
 
 /// Disallowed tools in batch mode
 const DISALLOWED_TOOLS: &[&str] = &["batch"];
@@ -248,17 +249,13 @@ impl Tool for BatchTool {
                 })
                 .collect();
 
-            let details_json = serde_json::to_string_pretty(&details)
-                .unwrap_or_else(|_| "Failed to serialize details".to_string());
-
-            // Build XML response
-            let xml = XmlBuilder::build_success(
-                "batch",
-                &format!("Batch execution ({}/{} successful)", successful, all_results.len()),
-                &format!("{}\n\nDetails:\n{}", output_message, details_json),
-            ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-            Ok(ToolResult::success("batch", xml))
+            let data = json!({
+                "summary": format!("Batch execution ({}/{} successful)", successful, all_results.len()),
+                "output": output_message,
+                "details": details
+            });
+            let result = JsonBuilder::build_success("batch", data);
+            Ok(ToolResult::success("batch", result))
         })
     }
 }

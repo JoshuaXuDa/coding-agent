@@ -67,38 +67,41 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_registration_const() {
-        // Verify that ToolRegistration::new is a const function
-        const _REG: ToolRegistration = ToolRegistration::new(
+    fn test_tool_registration_fields() {
+        // Verify ToolRegistration::new works correctly at runtime
+        // (ToolMetadata::default() is not const, so we can't test in a const context)
+        let _reg = ToolRegistration::new(
             "test",
-            |_fs, _exec| Arc::new(TestTool) as Arc<dyn Tool>,
+            |_fs, _exec| Arc::new(DummyTool) as Arc<dyn Tool>,
             DependencyType::Custom,
             ToolMetadata::default(),
         );
 
-        // If we got here, the const fn works
-        struct TestTool;
-        impl Tool for TestTool {
-            fn descriptor(&self) -> tirea::prelude::ToolDescriptor {
-                tirea::prelude::ToolDescriptor {
-                    id: "test".to_string(),
-                    name: "test".to_string(),
-                    description: "Test tool".to_string(),
-                    category: None,
-                    parameters: serde_json::json!({}),
-                    metadata: Default::default(),
-                }
-            }
+        // If we got here, the constructor works
+    }
 
-            fn execute<'life0, 'life1, 'life2, 'async_trait>(
-                &'life0 self,
-                _args: serde_json::Value,
-                _context: &'life1 tirea_contract::ToolCallContext<'life2>,
-            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<tirea::prelude::ToolResult, tirea::prelude::ToolError>> + Send + 'async_trait>> {
-                Box::pin(async {
-                    Ok(tirea::prelude::ToolResult::success("test", "test".to_string()))
-                })
+    // Dummy tool for testing - uses async_trait-compatible signature
+    struct DummyTool;
+
+    #[async_trait::async_trait]
+    impl Tool for DummyTool {
+        fn descriptor(&self) -> tirea::prelude::ToolDescriptor {
+            tirea::prelude::ToolDescriptor {
+                id: "test".to_string(),
+                name: "test".to_string(),
+                description: "Test tool".to_string(),
+                category: None,
+                parameters: serde_json::json!({}),
+                metadata: Default::default(),
             }
+        }
+
+        async fn execute(
+            &self,
+            _args: serde_json::Value,
+            _context: &tirea_contract::ToolCallContext<'_>,
+        ) -> Result<tirea::prelude::ToolResult, tirea::prelude::ToolError> {
+            Ok(tirea::prelude::ToolResult::success("test", "test".to_string()))
         }
     }
 }

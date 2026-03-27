@@ -266,7 +266,7 @@ impl Tool for GrepTool {
                     "PATH_NOT_FOUND",
                     &format!("Path not found: {}", grep_args.path),
                     &format!("The path '{}' does not exist", grep_args.path),
-                ).map_err(ErrorHandler::to_tool_error)?;
+                );
 
                 return Ok(ToolResult::success("grep", json));
             }
@@ -276,9 +276,8 @@ impl Tool for GrepTool {
                 .await
                 .map_err(ErrorHandler::to_tool_error)?;
 
-            // Build XML response
-            let json = JsonBuilder::build_grep_results(&grep_args.pattern, matches)
-                .map_err(ErrorHandler::to_tool_error)?;
+            // Build JSON response
+            let json = JsonBuilder::build_grep_results(&grep_args.pattern, matches);
 
             Ok(ToolResult::success("grep", json))
         })

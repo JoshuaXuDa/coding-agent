@@ -12,7 +12,7 @@ use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
 use crate::tools::domain::{
     validation::{validate_path, validate_non_empty_string},
-    xml_builder::XmlBuilder,
+    json_builder::JsonBuilder,
     error_handler::ErrorHandler,
     file_operations::FileOperationPrechecker,
     permissions::PermissionChecker,
@@ -145,14 +145,14 @@ impl Tool for EditTool {
                 .map_err(ErrorHandler::to_tool_error)?;
 
             if !perm_status.allowed {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "edit",
                     "PERMISSION_DENIED",
                     &perm_status.reason.unwrap_or_else(|| "Permission denied".to_string()),
                     &perm_status.suggestion.unwrap_or_else(|| "Check file permissions".to_string()),
-                ).map_err(ErrorHandler::to_tool_error)?;
+                );
 
-                return Ok(ToolResult::success("edit", xml));
+                return Ok(ToolResult::success("edit", json));
             }
 
             // Acquire write lock for concurrent access protection
@@ -171,21 +171,21 @@ impl Tool for EditTool {
 
             // Check if replacement was made
             if new_content == content {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "edit",
                     "STRING_NOT_FOUND",
                     &format!("String not found: {}", edit_args.old_string),
                     &format!("The old string '{}' was not found in the file", edit_args.old_string),
-                ).map_err(ErrorHandler::to_tool_error)?;
+                );
 
-                return Ok(ToolResult::success("edit", xml));
+                return Ok(ToolResult::success("edit", json));
             }
 
             // Write modified content back
             self.fs.write_file(path, &new_content).await
                 .map_err(ErrorHandler::to_tool_error)?;
 
-            // Build success XML
+            // Build success JSON
             let replacement_count = if edit_args.replace_all {
                 let count = content.matches(&edit_args.old_string).count();
                 count
@@ -193,18 +193,9 @@ impl Tool for EditTool {
                 1
             };
 
-            let content = format!(
-                "<file path=\"{}\"><replacements>{}</replacements></file>",
-                crate::tools::domain::escape_xml(&edit_args.path),
-                replacement_count
-            );
+            let json = JsonBuilder::build_edit_result(&edit_args.path, replacement_count);
 
-            let summary = format!("Successfully replaced {} occurrence(s)", replacement_count);
-
-            let xml = XmlBuilder::build_success("edit", &content, &summary)
-                .map_err(ErrorHandler::to_tool_error)?;
-
-            Ok(ToolResult::success("edit", xml))
+            Ok(ToolResult::success("edit", json))
         })
     }
 }

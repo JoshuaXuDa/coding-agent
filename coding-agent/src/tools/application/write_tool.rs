@@ -12,7 +12,7 @@ use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
 use crate::tools::domain::{
     validation::validate_content_size,
-    xml_builder::XmlBuilder,
+    json_builder::JsonBuilder,
     error_handler::ErrorHandler,
     file_operations::FileOperationPrechecker,
     permissions::PermissionChecker,
@@ -131,26 +131,26 @@ impl Tool for WriteTool {
                 .map_err(ErrorHandler::to_tool_error)?;
 
             if !perm_status.allowed {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "write",
                     "PERMISSION_DENIED",
                     &perm_status.reason.unwrap_or_else(|| "Permission denied".to_string()),
                     &perm_status.suggestion.unwrap_or_else(|| "Check file permissions".to_string()),
-                ).map_err(ErrorHandler::to_tool_error)?;
+                );
 
-                return Ok(ToolResult::success("write", xml));
+                return Ok(ToolResult::success("write", json));
             }
 
             // Check if path is a directory
             if self.fs.exists(path) && self.fs.is_dir(path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "write",
                     "IS_DIRECTORY",
                     &format!("Cannot write to directory: {}", write_args.path),
                     &format!("The path '{}' is a directory", write_args.path),
-                ).map_err(ErrorHandler::to_tool_error)?;
+                );
 
-                return Ok(ToolResult::success("write", xml));
+                return Ok(ToolResult::success("write", json));
             }
 
             // Check parent directory write permission if creating new file
@@ -161,14 +161,14 @@ impl Tool for WriteTool {
                             .map_err(ErrorHandler::to_tool_error)?;
 
                         if !dir_perm_status.allowed {
-                            let xml = XmlBuilder::build_error(
+                            let json = JsonBuilder::build_error(
                                 "write",
                                 "PERMISSION_DENIED",
                                 &dir_perm_status.reason.unwrap_or_else(|| "Cannot create file".to_string()),
                                 &dir_perm_status.suggestion.unwrap_or_else(|| "Check parent directory permissions".to_string()),
-                            ).map_err(ErrorHandler::to_tool_error)?;
+                            );
 
-                            return Ok(ToolResult::success("write", xml));
+                            return Ok(ToolResult::success("write", json));
                         }
                     }
                 }
@@ -181,12 +181,11 @@ impl Tool for WriteTool {
             self.fs.write_file(path, &write_args.content).await
                 .map_err(|e| ToolError::ExecutionFailed(format!("Failed to write file: {}", e)))?;
 
-            // Build XML response
+            // Build JSON response
             let bytes_written = write_args.content.len();
-            let xml = XmlBuilder::build_write_result_xml(&write_args.path, bytes_written)
-                .map_err(ErrorHandler::to_tool_error)?;
+            let json = JsonBuilder::build_write_result(&write_args.path, bytes_written);
 
-            Ok(ToolResult::success("write", xml))
+            Ok(ToolResult::success("write", json))
         })
     }
 }

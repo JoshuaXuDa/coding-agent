@@ -10,7 +10,7 @@ use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
 use crate::tools::truncate_output;
 
 /// Head/Tail tool
@@ -132,40 +132,40 @@ impl Tool for HeadTailTool {
 
             // Validate mode
             if ht_args.mode != "head" && ht_args.mode != "tail" {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "head_tail",
                     "INVALID_MODE",
                     &format!("Invalid mode: {}", ht_args.mode),
                     "Mode must be either 'head' or 'tail'",
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("head_tail", xml));
+                return Ok(ToolResult::success("head_tail", json));
             }
 
             let path = Path::new(&ht_args.path);
 
             // Check if path exists
             if !self.fs.exists(path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "head_tail",
                     "FILE_NOT_FOUND",
                     &format!("File not found: {}", ht_args.path),
                     &format!("The file '{}' does not exist", ht_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("head_tail", xml));
+                return Ok(ToolResult::success("head_tail", json));
             }
 
             // Check if path is a file
             if !self.fs.is_file(path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "head_tail",
                     "NOT_A_FILE",
                     &format!("Not a file: {}", ht_args.path),
                     &format!("The path '{}' is not a file", ht_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("head_tail", xml));
+                return Ok(ToolResult::success("head_tail", json));
             }
 
             // Read file content (sync operation)
@@ -178,33 +178,22 @@ impl Tool for HeadTailTool {
             // Truncate if too large
             let content = truncate_output(&content);
 
-            // Build XML response
-            let line_count = content.lines().count();
-            let content_xml = format!(
-                "<file path=\"{}\"><mode>{}</mode><lines>{}</lines><content>{}</content></file>",
-                xml_escape(&ht_args.path),
-                ht_args.mode,
+            // Build JSON response
+            let lines_vec: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+            let line_count = lines_vec.len();
+            let total_lines = line_count;
+
+            let json = JsonBuilder::build_head_tail_result(
+                &ht_args.path,
+                lines_vec,
+                &ht_args.mode,
                 line_count,
-                xml_escape(&content)
+                total_lines,
             );
 
-            let summary = format!("Read {} lines using {} mode", line_count, ht_args.mode);
-
-            let xml = XmlBuilder::build_success("head_tail", &content_xml, &summary)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-            Ok(ToolResult::success("head_tail", xml))
+            Ok(ToolResult::success("head_tail", json))
         })
     }
-}
-
-/// Escape special XML characters
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
 }
 
 #[cfg(test)]

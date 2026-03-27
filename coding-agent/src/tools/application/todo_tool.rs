@@ -9,7 +9,8 @@ use std::pin::Pin;
 use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
+use serde_json::json;
 use serde::{Deserialize, Serialize};
 
 /// Todo item status
@@ -170,17 +171,13 @@ impl Tool for TodoWriteTool {
                 .count();
 
             // Build JSON output
-            let json_output = serde_json::to_string_pretty(&todos)
-                .unwrap_or_else(|_| "Failed to serialize todos".to_string());
+            let data = json!({
+                "summary": format!("{} todos", active_count),
+                "todos": todos
+            });
+            let result = JsonBuilder::build_success("todowrite", data);
 
-            // Build XML response
-            let xml = XmlBuilder::build_success(
-                "todowrite",
-                &format!("{} todos", active_count),
-                &json_output,
-            ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-            Ok(ToolResult::success("todowrite", xml))
+            Ok(ToolResult::success("todowrite", result))
         })
     }
 }

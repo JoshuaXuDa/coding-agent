@@ -150,8 +150,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_blocking_error() {
-        let result = execute_blocking::<(), i32>(|| {
-            Err(anyhow::anyhow!("Test error"))
+        let result = execute_blocking(|| {
+            let _: i32 = 0;
+            Err::<i32, _>(anyhow::anyhow!("Test error"))
         })
         .await;
 
@@ -176,11 +177,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_blocking_with_timeout_exceeded() {
-        let result = execute_blocking_with_timeout::<(), i32>(
+        let result = execute_blocking_with_timeout(
             Duration::from_millis(10),
             || {
                 thread::sleep(Duration::from_millis(100));
-                Ok(42)
+                Ok::<i32, _>(42)
             },
         )
         .await;
@@ -213,10 +214,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_blocking_parallel_with_errors() {
-        let results = execute_blocking_parallel::<(), i32>(vec![
-            || Ok(1),
-            || Err(anyhow::anyhow!("Error 2")),
-            || Ok(3),
+        let results = execute_blocking_parallel(vec![
+            || Ok::<i32, _>(1),
+            || Err::<i32, _>(anyhow::anyhow!("Error 2")),
+            || Ok::<i32, _>(3),
         ])
         .await;
 
@@ -242,8 +243,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_async_maybe_async_error() {
-        let async_maybe = AsyncMaybe::async_task::<(), i32>(|| {
-            Err(anyhow::anyhow!("Test error"))
+        let async_maybe = AsyncMaybe::async_task(|| {
+            Err::<i32, _>(anyhow::anyhow!("Test error"))
         });
         let result = async_maybe.get().await;
         assert!(result.is_err());

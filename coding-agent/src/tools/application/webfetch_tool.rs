@@ -7,7 +7,14 @@ use std::pin::Pin;
 use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
+use serde_json::json;
+use std::sync::LazyLock;
+use regex::Regex;
+
+static HTML_TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>|<[^>]+>").expect("valid HTML tag regex")
+});
 
 #[cfg(feature = "web-tools")]
 use reqwest::Client;
@@ -90,8 +97,7 @@ impl WebFetchTool {
     /// Extract text from HTML (removes scripts, styles, etc.)
     fn extract_text_from_html(&self, html: &str) -> String {
         // Simple text extraction - remove HTML tags
-        let re = regex::Regex::new(r"<script[^>]*>.*?</script>|<style[^>]*>.*?</style>|<[^>]+>").unwrap();
-        let text = re.replace_all(html, " ");
+        let text = HTML_TAG_REGEX.replace_all(html, " ");
         // Clean up whitespace
         text.split_whitespace()
             .collect::<Vec<_>>()
@@ -233,15 +239,13 @@ impl Tool for WebFetchTool {
                 }
             };
 
-            // Build XML response
-            let title = format!("{} ({})", fetch_args.url, content_type);
-            let xml = XmlBuilder::build_success(
-                "webfetch",
-                &title,
-                &output,
-            ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-            Ok(ToolResult::success("webfetch", xml))
+            let data = json!({
+                "url": &fetch_args.url,
+                "content_type": &content_type,
+                "content": &output
+            });
+            let result = JsonBuilder::build_success("webfetch", data);
+            Ok(ToolResult::success("webfetch", result))
         })
     }
 }

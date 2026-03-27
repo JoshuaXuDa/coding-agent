@@ -10,7 +10,7 @@ use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::platform::domain::filesystem::FileSystem;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
 
 /// Stat tool
 ///
@@ -76,25 +76,24 @@ impl Tool for StatTool {
 
             // Check if path exists
             if !self.fs.exists(path) {
-                let xml = XmlBuilder::build_error(
+                let json = JsonBuilder::build_error(
                     "stat",
                     "PATH_NOT_FOUND",
                     &format!("Path not found: {}", stat_args.path),
                     &format!("The path '{}' does not exist", stat_args.path),
-                ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+                );
 
-                return Ok(ToolResult::success("stat", xml));
+                return Ok(ToolResult::success("stat", json));
             }
 
             // Get file metadata
             let metadata = self.fs.file_metadata(path).await
                 .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
-            // Build XML response
-            let xml = XmlBuilder::build_stat_result_xml(&metadata)
-                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
+            // Build JSON response
+            let json = JsonBuilder::build_stat_result(&metadata);
 
-            Ok(ToolResult::success("stat", xml))
+            Ok(ToolResult::success("stat", json))
         })
     }
 }

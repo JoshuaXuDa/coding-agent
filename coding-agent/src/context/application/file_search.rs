@@ -47,7 +47,8 @@ impl FileSearchCoordinator {
 
     /// Resolve fuzzy file match
     fn resolve_fuzzy_match(&self, reference: &FileReference) -> Result<Vec<PathBuf>> {
-        let pattern = reference.pattern.as_ref().unwrap();
+        let pattern = reference.pattern.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Pattern missing for fuzzy match"))?;
 
         // Search in current directory recursively
         let mut candidates = Vec::new();
@@ -90,7 +91,8 @@ impl FileSearchCoordinator {
 
     /// Resolve glob pattern
     fn resolve_glob_pattern(&self, reference: &FileReference) -> Result<Vec<PathBuf>> {
-        let pattern = reference.pattern.as_ref().unwrap();
+        let pattern = reference.pattern.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Pattern missing for glob match"))?;
 
         let mut matches = Vec::new();
 

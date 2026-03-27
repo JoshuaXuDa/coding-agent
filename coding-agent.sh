@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 快速启动脚本 - 直接在前台运行
+# CodingAgent 快速启动脚本
 set -e
 
 # 加载环境变量
@@ -11,16 +11,26 @@ if [ -f .env ]; then
 fi
 
 # 检查 API Key
-if [ "$ANTHROPIC_API_KEY" = "your-api-key-here" ]; then
-    echo "❌ 请先配置 .env 文件中的 ANTHROPIC_API_KEY"
+if [ -z "$OPENAI_API_KEY" ] || [ "$OPENAI_API_KEY" = "your-glm-api-key-here" ]; then
+    echo "Error: Please configure OPENAI_API_KEY in .env or .env.local"
     exit 1
 fi
 
 # 加载 Rust 环境
-if [ -f "$HOME/.cargo/env" ]; then
-    source "$HOME/.cargo/env"
+[ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+
+# 确保在项目根目录
+cd "$(dirname "$0")"
+
+# 检查是否需要编译
+if [ ! -f "coding-agent/target/debug/coding-agent" ]; then
+    echo "Building CodingAgent..."
+    cd coding-agent
+    cargo build
+    cd ..
 fi
 
-# 直接运行（前台交互模式）
-cd "$(dirname "$0")"
-cargo run --bin coding-agent
+# 运行程序
+cd coding-agent
+echo "Starting CodingAgent..."
+exec ./target/debug/coding-agent

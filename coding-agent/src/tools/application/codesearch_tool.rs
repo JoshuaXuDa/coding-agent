@@ -7,7 +7,8 @@ use std::pin::Pin;
 use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
+use serde_json::json;
 
 #[cfg(feature = "codesearch")]
 use reqwest::Client;
@@ -187,15 +188,12 @@ impl Tool for CodeSearchTool {
                 output = "No code snippets or documentation found. Please try a different query or be more specific about the library or programming concept.".to_string();
             }
 
-            // Build XML response
-            let title = format!("Code search: {}", search_args.query);
-            let xml = XmlBuilder::build_success(
-                "codesearch",
-                &title,
-                &output,
-            ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-            Ok(ToolResult::success("codesearch", xml))
+            let data = json!({
+                "query": &search_args.query,
+                "results": &output
+            });
+            let result = JsonBuilder::build_success("codesearch", data);
+            Ok(ToolResult::success("codesearch", result))
         })
     }
 }

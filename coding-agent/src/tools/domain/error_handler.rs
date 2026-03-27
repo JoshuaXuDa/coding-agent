@@ -1,12 +1,11 @@
 //! Error handling helper service
 //!
 //! Centralizes error conversion logic to eliminate repetitive error handling code
-//! across all tools. This service provides consistent error transformation and
-//! XML error building capabilities.
+//! across all tools. This service provides consistent error transformation.
 
 use anyhow::Result;
 use tirea::prelude::ToolError;
-use super::xml_builder::XmlBuilder;
+use super::json_builder::JsonBuilder;
 
 /// Convert anyhow::Error to ToolError with standard message
 pub fn to_tool_error(error: anyhow::Error) -> ToolError {
@@ -28,15 +27,14 @@ pub fn propagate_error_with_context<T>(result: Result<T>, context: &str) -> Resu
     result.map_err(|e| to_tool_error_with_context(e, context))
 }
 
-/// Build error XML response
-pub fn build_error_xml(
+/// Build error JSON response
+pub fn build_error_json(
     tool_name: &str,
     error_code: &str,
     message: &str,
     details: &str,
-) -> Result<String, ToolError> {
-    XmlBuilder::build_error(tool_name, error_code, message, details)
-        .map_err(to_tool_error)
+) -> serde_json::Value {
+    JsonBuilder::build_error(tool_name, error_code, message, details)
 }
 
 /// Convenience functions for common error handling patterns
@@ -112,19 +110,17 @@ mod tests {
     }
 
     #[test]
-    fn test_build_error_xml() {
-        let xml = build_error_xml(
+    fn test_build_error_json() {
+        let json = build_error_json(
             "test_tool",
             "FILE_NOT_FOUND",
             "File not found",
             "/path/to/file"
         );
-        assert!(xml.is_ok());
-        let xml_str = xml.unwrap();
-        assert!(xml_str.contains("test_tool"));
-        assert!(xml_str.contains("FILE_NOT_FOUND"));
-        assert!(xml_str.contains("File not found"));
-        assert!(xml_str.contains("/path/to/file"));
+        assert_eq!(json["tool"], "test_tool");
+        assert_eq!(json["error"]["code"], "FILE_NOT_FOUND");
+        assert_eq!(json["error"]["message"], "File not found");
+        assert_eq!(json["error"]["details"], "/path/to/file");
     }
 
     #[test]

@@ -7,7 +7,8 @@ use std::pin::Pin;
 use std::future::Future;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
-use crate::tools::domain::xml_builder::XmlBuilder;
+use crate::tools::domain::json_builder::JsonBuilder;
+use serde_json::json;
 
 #[cfg(feature = "websearch")]
 use reqwest::Client;
@@ -208,15 +209,12 @@ impl Tool for WebSearchTool {
                 output = "No search results found. Please try a different query.".to_string();
             }
 
-            // Build XML response
-            let title = format!("Web search: {}", search_args.query);
-            let xml = XmlBuilder::build_success(
-                "websearch",
-                &title,
-                &output,
-            ).map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
-
-            Ok(ToolResult::success("websearch", xml))
+            let data = json!({
+                "query": &search_args.query,
+                "results": &output
+            });
+            let result = JsonBuilder::build_success("websearch", data);
+            Ok(ToolResult::success("websearch", result))
         })
     }
 }

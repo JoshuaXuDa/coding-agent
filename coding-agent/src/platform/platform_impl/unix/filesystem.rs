@@ -235,8 +235,8 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
 
         // Create some test files
-        fs::create_file(temp_dir.path().join("file1.txt")).unwrap();
-        fs::create_file(temp_dir.path().join("file2.txt")).unwrap();
+        fs::write(temp_dir.path().join("file1.txt"), "").unwrap();
+        fs::write(temp_dir.path().join("file2.txt"), "").unwrap();
         fs::create_dir(temp_dir.path().join("subdir")).unwrap();
 
         let entries = fs.list_dir(temp_dir.path()).await.unwrap();

@@ -125,7 +125,7 @@ impl Tool for GlobTool {
         Box::pin(async move {
             // Parse arguments
             let glob_args = Self::parse_args(&args)
-                ;
+                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
             let base_path = Path::new(&glob_args.path);
 
@@ -143,7 +143,7 @@ impl Tool for GlobTool {
 
             // Execute glob
             let matches = self.execute_glob(&glob_args.pattern, base_path)
-                ;
+                .map_err(|e: anyhow::Error| ToolError::ExecutionFailed(e.to_string()))?;
 
             // Build XML response
             let json = JsonBuilder::build_glob_results(&glob_args.pattern, matches)

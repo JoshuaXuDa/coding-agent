@@ -74,6 +74,7 @@ pub fn create_command_executor() -> Arc<dyn CommandExecutor> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_create_filesystem() {
