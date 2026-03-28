@@ -7,7 +7,7 @@
     }
   },
   "models": {
-    "glm": { "provider": "bigmodel-coding", "model": "GLM-4.7" }
+    "glm": { "provider": "bigmodel-coding", "model": "GLM-5.1" }
   },
   "agents": [{
     "kind": "local",
