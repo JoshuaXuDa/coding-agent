@@ -402,8 +402,7 @@ impl InputWidget {
         frame.render_widget(block, area);
 
         // Then render the textarea widget inside the block
-        let widget = self.textarea.widget();
-        frame.render_widget(widget, inner_area);
+        frame.render_widget(&self.textarea, inner_area);
     }
 }
 

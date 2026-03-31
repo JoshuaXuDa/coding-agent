@@ -171,7 +171,7 @@ impl TuiFileSelector {
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)].as_ref())
-            .split(f.size());
+            .split(f.area());
 
         // Title/search box
         let title = vec![

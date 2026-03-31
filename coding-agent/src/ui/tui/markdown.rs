@@ -118,6 +118,7 @@ impl MarkdownRenderer {
                     Tag::HtmlBlock => {}
                     Tag::Image { .. } => {}
                     Tag::MetadataBlock(_) => {}
+                    _ => {} // Handle new pulldown-cmark 0.13 tags
                 },
 
                 // End tags
@@ -137,7 +138,7 @@ impl MarkdownRenderer {
                         }
                         lines.push(vec![]); // Blank line after heading
                     }
-                    TagEnd::BlockQuote => {
+                    TagEnd::BlockQuote(_) => {
                         if !current_line.is_empty() {
                             lines.push(current_line.clone());
                             current_line.clear();
@@ -199,6 +200,7 @@ impl MarkdownRenderer {
                     TagEnd::HtmlBlock => {}
                     TagEnd::Image => {}
                     TagEnd::MetadataBlock(_) => {}
+                    _ => {} // Handle new pulldown-cmark 0.13 tag ends
                 },
 
                 // Text and inline elements

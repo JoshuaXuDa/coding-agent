@@ -206,7 +206,7 @@ pub fn build_agent_os_from_config(
         if let Some(max_rounds) = agent_config.max_rounds {
             agent_def.max_rounds = max_rounds;
         }
-        builder = builder.with_agent(&agent_config.id, agent_def);
+        builder = builder.with_agent_spec(tirea_agentos::composition::AgentDefinitionSpec::local_with_id(&agent_config.id, agent_def));
     }
 
     // Add state store - use FileStore for persistence

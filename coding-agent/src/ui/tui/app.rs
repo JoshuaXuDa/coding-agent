@@ -648,6 +648,7 @@ impl TuiApp {
                 state: None,
                 messages: vec![Message::user(message)],
                 initial_decisions: vec![],
+                source_mailbox_entry_id: None,
             };
 
             let _ = log_tx.send(crate::logging::LogEntry {
@@ -874,7 +875,7 @@ impl TuiApp {
 
     /// Draw the UI
     fn draw(&mut self, frame: &mut Frame) {
-        let size = frame.size();
+        let size = frame.area();
         let areas = calculate_layout(size, self.show_debug_panel);
 
         // Cache layout areas for mouse event handling

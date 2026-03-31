@@ -66,7 +66,7 @@ mod tests {
         let error = anyhow::anyhow!("Test error");
         let tool_error = to_tool_error(error);
         assert!(matches!(tool_error, ToolError::ExecutionFailed(_)));
-        assert_eq!(tool_error.to_string(), "ExecutionFailed: Test error");
+        assert_eq!(tool_error.to_string(), "Execution failed: Test error");
     }
 
     #[test]

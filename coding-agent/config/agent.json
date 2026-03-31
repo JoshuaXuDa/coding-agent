@@ -1,13 +1,13 @@
 {
   "providers": {
-    "bigmodel-coding": {
-      "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4/",
-      "auth": { "kind": "env", "name": "OPENAI_API_KEY" },
-      "adapter_kind": "openai"
+    "bigmodel-anthropic": {
+      "endpoint": "https://open.bigmodel.cn/api/anthropic",
+      "auth": { "kind": "env", "name": "ANTHROPIC_AUTH_TOKEN" },
+      "adapter_kind": "anthropic"
     }
   },
   "models": {
-    "glm": { "provider": "bigmodel-coding", "model": "GLM-5.1" }
+    "glm": { "provider": "bigmodel-anthropic", "model": "glm-5.1" }
   },
   "agents": [{
     "kind": "local",

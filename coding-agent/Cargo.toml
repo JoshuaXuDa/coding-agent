@@ -4,12 +4,12 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-tirea = "0.3.0"
-tirea-contract = "0.3.0"
+tirea = "0.5.0"
+tirea-contract = "0.5.0"
 tirea-agent-loop = "0.3.0"
-tirea-agentos = "0.3.0"
-tirea-extension-permission = "0.3.0"
-tirea-store-adapters = "0.3.0"
+tirea-agentos = "0.5.0"
+tirea-extension-permission = "0.5.0"
+tirea-store-adapters = "0.5.0"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -28,24 +28,22 @@ toml = "0.8"
 futures = "0.3"
 genai = { version = "0.6.0-beta.5" }
 dotenv = "0.15"
-command-group = "5"
 path-clean = "0.1"
 pathdiff = "0.2"
 paste = "1.0"
 
 # File type detection and multi-format support
 mime_guess = "2"
-infer = "0.15"
 lopdf = "0.31"
 base64 = "0.22"
 
 # Interactive readline and autocompletion
-rustyline = "13"
+rustyline = "14"
 
 # TUI framework
-ratatui = "0.26"
-crossterm = "0.27"
-tui-textarea = "0.4"
+ratatui = "0.28"
+crossterm = "0.28"
+tui-textarea = "0.6"
 arboard = "3"
 
 # Text handling
@@ -53,10 +51,10 @@ textwrap = "0.16"
 unicode-width = "0.1"
 
 # Markdown parsing
-pulldown-cmark = "0.11"
+pulldown-cmark = "0.13"
 
 # HTTP client for web tools (WebFetch, WebSearch, CodeSearch)
-reqwest = { version = "0.11", features = ["json", "stream"], optional = true }
+reqwest = { version = "0.13", features = ["json", "stream"], optional = true }
 
 # HTML to Markdown conversion (WebFetch)
 html2md = { version = "0.2", optional = true }
