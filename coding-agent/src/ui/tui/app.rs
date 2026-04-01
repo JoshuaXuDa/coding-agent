@@ -50,10 +50,10 @@ pub struct TuiApp {
     input_status: InputStatusIndicator,
     /// Status bar
     status: StatusBar,
-    /// Scroll offset for conversation
+    /// Line-level scroll offset for conversation
     scroll_offset: usize,
-    /// Conversation scroll offset (for mouse scrolling)
-    conversation_scroll: usize,
+    /// Auto-scroll to bottom
+    conversation_auto_scroll: bool,
     /// Cached layout areas for mouse click detection
     cached_areas: Option<crate::ui::tui::layout::LayoutAreas>,
     /// Event receiver
@@ -120,7 +120,7 @@ impl TuiApp {
             input_status: InputStatusIndicator::new(),
             status: StatusBar::new(),
             scroll_offset: 0,
-            conversation_scroll: 0,
+            conversation_auto_scroll: true,
             cached_areas: None,
             event_rx,
             event_tx,
@@ -143,7 +143,7 @@ impl TuiApp {
         // Setup terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
+        execute!(stdout, EnterAlternateScreen, crossterm::event::EnableMouseCapture)?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
@@ -155,6 +155,7 @@ impl TuiApp {
         execute!(
             terminal.backend_mut(),
             LeaveAlternateScreen,
+            crossterm::event::DisableMouseCapture,
         )?;
         terminal.show_cursor()?;
 
@@ -181,6 +182,7 @@ impl TuiApp {
                     if event::poll(Duration::from_millis(50))? {
                         match event::read()? {
                             event::Event::Key(key) => self.handle_key_event(key),
+                            event::Event::Mouse(mouse) => self.handle_mouse_event(mouse),
                             _ => {}
                         }
                     }
@@ -252,11 +254,13 @@ impl TuiApp {
                         self.send_message();
                     }
                 } else if key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
-                    self.conversation_scroll = self.conversation_scroll.saturating_sub(10);
+                    self.scroll_offset = self.scroll_offset.saturating_sub(10);
+                    self.conversation_auto_scroll = false;
                 } else if self.show_debug_panel {
                     self.debug_panel.page_up();
                 } else {
-                    self.conversation_scroll = self.conversation_scroll.saturating_sub(10);
+                    self.scroll_offset = self.scroll_offset.saturating_sub(10);
+                    self.conversation_auto_scroll = false;
                 }
             }
             KeyCode::PageDown => {
@@ -266,11 +270,13 @@ impl TuiApp {
                         self.send_message();
                     }
                 } else if key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) {
-                    self.conversation_scroll = self.conversation_scroll.saturating_add(10);
+                    self.scroll_offset = self.scroll_offset.saturating_add(10);
+                    self.conversation_auto_scroll = false;
                 } else if self.show_debug_panel {
                     self.debug_panel.page_down();
                 } else {
-                    self.conversation_scroll = self.conversation_scroll.saturating_add(10);
+                    self.scroll_offset = self.scroll_offset.saturating_add(10);
+                    self.conversation_auto_scroll = false;
                 }
             }
             KeyCode::Up => {
@@ -281,6 +287,9 @@ impl TuiApp {
                     }
                 } else if self.show_debug_panel {
                     self.debug_panel.scroll_up();
+                } else {
+                    self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                    self.conversation_auto_scroll = false;
                 }
             }
             KeyCode::Down => {
@@ -291,6 +300,9 @@ impl TuiApp {
                     }
                 } else if self.show_debug_panel {
                     self.debug_panel.scroll_down();
+                } else {
+                    self.scroll_offset = self.scroll_offset.saturating_add(1);
+                    self.conversation_auto_scroll = false;
                 }
             }
             _ => {
@@ -322,7 +334,8 @@ impl TuiApp {
                 if self.is_in_debug_panel(event.column, event.row) {
                     self.debug_panel.scroll_up();
                 } else if self.is_in_conversation_area(event.column, event.row) {
-                    self.conversation_scroll = self.conversation_scroll.saturating_sub(1);
+                    self.scroll_offset = self.scroll_offset.saturating_sub(3);
+                    self.conversation_auto_scroll = false;
                 }
             }
             MouseEventKind::ScrollDown => {
@@ -330,7 +343,8 @@ impl TuiApp {
                 if self.is_in_debug_panel(event.column, event.row) {
                     self.debug_panel.scroll_down();
                 } else if self.is_in_conversation_area(event.column, event.row) {
-                    self.conversation_scroll = self.conversation_scroll.saturating_add(1);
+                    self.scroll_offset = self.scroll_offset.saturating_add(3);
+                    self.conversation_auto_scroll = false;
                 }
             }
 
@@ -360,7 +374,7 @@ impl TuiApp {
                         event.column, event.row,
                         self.cached_areas.as_ref().unwrap().conversation,
                         line_count,
-                        0, // scroll already applied in draw_conversation via .skip()
+                        self.scroll_offset,
                     );
                     pos.map(|p| (p, SelectionTarget::Conversation))
                 } else {
@@ -382,7 +396,7 @@ impl TuiApp {
                         SelectionTarget::Conversation => (
                             self.cached_areas.as_ref().map(|a| a.conversation),
                             self.cached_conversation_line_count,
-                            0, // scroll already applied in draw_conversation via .skip()
+                            self.scroll_offset,
                         ),
                         SelectionTarget::DebugPanel => (
                             self.cached_areas.as_ref().and_then(|a| a.debug),
@@ -950,12 +964,8 @@ impl TuiApp {
         let available_width = area.width.saturating_sub(4) as usize;
         let mut last_message_type: Option<&str> = None;
 
-        // Apply scroll offset - skip messages that are above the visible area
-        let visible_messages: Vec<_> = self.messages.iter()
-            .skip(self.conversation_scroll)
-            .collect();
-
-        for msg in visible_messages {
+        // Render all messages (no skip — visibility controlled by Paragraph::scroll)
+        for msg in &self.messages {
             // Add separator between different message types
             if let Some(last_type) = last_message_type {
                 let current_type = match msg {
@@ -1116,8 +1126,24 @@ impl TuiApp {
             }
         }
 
+        let viewport_height = area.height.saturating_sub(2) as usize; // subtract border
+        let total_lines = text.lines.len();
+
+        // Auto-scroll: follow to bottom
+        if self.conversation_auto_scroll {
+            self.scroll_offset = total_lines.saturating_sub(viewport_height);
+        }
+
+        // Clamp and re-enable auto-scroll if at bottom
+        let max_scroll = total_lines.saturating_sub(viewport_height);
+        if self.scroll_offset >= max_scroll {
+            self.scroll_offset = max_scroll;
+            self.conversation_auto_scroll = true;
+        }
+
         let paragraph = Paragraph::new(text)
-            .block(Block::default().borders(Borders::ALL).title("Conversation"));
+            .block(Block::default().borders(Borders::ALL).title("Conversation"))
+            .scroll((self.scroll_offset as u16, 0));
 
         frame.render_widget(paragraph, area);
     }
@@ -1130,11 +1156,8 @@ impl TuiApp {
             .map(|a| a.conversation.width.saturating_sub(4) as usize)?;
 
         let mut text = Text::default();
-        let visible_messages: Vec<_> = self.messages.iter()
-            .skip(self.conversation_scroll)
-            .collect();
 
-        for msg in visible_messages {
+        for msg in &self.messages {
             match msg {
                 ChatMessage::User { content } => {
                     let wrapped = Self::wrap_text(content, available_width);
