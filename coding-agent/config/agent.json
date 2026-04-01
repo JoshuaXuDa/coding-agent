@@ -1,13 +1,13 @@
 {
   "providers": {
     "bigmodel-anthropic": {
-      "endpoint": "https://open.bigmodel.cn/api/anthropic",
+      "endpoint": "https://open.bigmodel.cn/api/anthropic/v1",
       "auth": { "kind": "env", "name": "ANTHROPIC_AUTH_TOKEN" },
       "adapter_kind": "anthropic"
     }
   },
   "models": {
-    "glm": { "provider": "bigmodel-anthropic", "model": "glm-5.1" }
+    "glm": { "provider": "bigmodel-anthropic", "model": "glm-4.7" }
   },
   "agents": [{
     "kind": "local",

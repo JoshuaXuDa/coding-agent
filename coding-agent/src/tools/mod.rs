@@ -17,6 +17,9 @@ pub mod domain;
 // Application layer
 pub mod application;
 
+// Schema compatibility
+pub mod schema_fix;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -130,6 +133,15 @@ pub fn build_tool_map() -> HashMap<String, Arc<dyn Tool>> {
 
     // Register all tools using the collect_tools macro
     collect_tools!(tools, fs, executor);
+
+    // Normalize tool parameter schemas for Anthropic API compatibility.
+    // Anthropic requires input_schema to be a proper JSON Schema
+    // with {"type": "object", "properties": {...}}, but our tools define
+    // flat parameter objects. This wrapper fixes the schema transparently.
+    for tool in tools.values_mut() {
+        let fixed = crate::tools::schema_fix::SchemaFixingTool::new(Arc::clone(tool));
+        *tool = Arc::new(fixed) as Arc<dyn Tool>;
+    }
 
     // Set the global tool registry for tools that need access to other tools
     let _ = TOOL_REGISTRY.set(Arc::new(tools.clone()));

@@ -1059,14 +1059,13 @@ dependencies = [
 [[package]]
 name = "genai"
 version = "0.6.0-beta.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94491bd37a77b5fcf6f51839af151a7d2d825ad826130c967e25c9141a3e8aff"
 dependencies = [
  "base64 0.22.1",
  "bytes",
  "derive_more",
  "eventsource-stream",
  "futures",
+ "log",
  "mime_guess",
  "reqwest 0.13.2",
  "serde",
@@ -1453,7 +1452,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "system-configuration 0.7.0",
  "tokio",
  "tower-service",
@@ -2540,7 +2539,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -2578,7 +2577,7 @@ dependencies = [
  "cfg_aliases 0.2.1",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -4582,7 +4581,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

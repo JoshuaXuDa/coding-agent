@@ -5,3 +5,6 @@ members = ["coding-agent"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+
+[patch.crates-io]
+genai = { path = "third-party/genai" }

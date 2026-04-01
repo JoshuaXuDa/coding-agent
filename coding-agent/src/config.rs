@@ -142,7 +142,13 @@ pub fn load_config_or_default() -> Result<Config> {
 
 /// Create a genai client from provider configuration
 pub fn create_client_from_config(config: &ProviderConfig) -> Result<Client> {
-    let endpoint = config.endpoint.clone();
+    // Ensure endpoint has trailing slash so the adapter can correctly
+    // append path segments (e.g. "messages") without producing a malformed URL.
+    let endpoint = if config.endpoint.ends_with('/') {
+        config.endpoint.clone()
+    } else {
+        format!("{}/", config.endpoint)
+    };
     let auth = match &config.auth {
         None => genai::resolver::AuthData::None,
         Some(AuthConfig::Env { name }) => {
