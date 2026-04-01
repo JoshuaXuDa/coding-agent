@@ -210,6 +210,23 @@ impl Tool for BashTool {
     }
 }
 
+// --- ToolProvider implementation ---
+pub struct BashToolProvider;
+
+impl crate::tools::domain::provider::ToolProvider for BashToolProvider {
+    fn tool_id(&self) -> &str { "bash" }
+
+    fn dependency_type(&self) -> crate::tools::domain::provider::DependencyType { crate::tools::domain::provider::DependencyType::CommandExecutor }
+
+    fn build(
+        &self,
+        _fs: Option<Arc<dyn crate::platform::domain::filesystem::FileSystem>>,
+        executor: Option<Arc<dyn CommandExecutor>>,
+    ) -> Arc<dyn Tool> {
+        Arc::new(BashTool::new(executor.unwrap()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

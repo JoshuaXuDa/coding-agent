@@ -294,6 +294,25 @@ impl Tool for WebFetchTool {
     }
 }
 
+// --- ToolProvider implementation ---
+use std::sync::Arc;
+
+pub struct WebFetchToolProvider;
+
+impl crate::tools::domain::provider::ToolProvider for WebFetchToolProvider {
+    fn tool_id(&self) -> &str { "webfetch" }
+
+    fn dependency_type(&self) -> crate::tools::domain::provider::DependencyType { crate::tools::domain::provider::DependencyType::None }
+
+    fn build(
+        &self,
+        _fs: Option<Arc<dyn crate::platform::domain::filesystem::FileSystem>>,
+        _executor: Option<Arc<dyn crate::platform::domain::command::CommandExecutor>>,
+    ) -> Arc<dyn Tool> {
+        Arc::new(WebFetchTool::new())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

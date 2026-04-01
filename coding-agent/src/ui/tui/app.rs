@@ -2,9 +2,9 @@
 //!
 //! Provides a full terminal UI experience for the coding agent.
 
+use crate::state::{ChatMessage, ToolCallStatus};
 use crate::ui::tui::{
-    conversation::ChatMessage,
-    events::{TuiEvent, ToolStatus},
+    events::TuiEvent,
     input::{InputMode, InputWidget},
     input_status::{InputStatus, InputStatusIndicator},
     layout::calculate_layout,
@@ -13,6 +13,7 @@ use crate::ui::tui::{
     markdown::MarkdownRenderer,
     selection::{TextSelection, SelectionTarget},
 };
+use crate::query::{QueryEngine, QueryEvent, CancellationToken};
 use crossterm::{
     event::{self, KeyCode, KeyEvent},
     execute,
@@ -29,15 +30,14 @@ use ratatui::{
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
-use tirea_agentos::AgentOs;
 use tokio::sync::mpsc;
 use tokio::time::{interval, timeout};
 use textwrap::{wrap, Options};
 
 /// Main TUI application
 pub struct TuiApp {
-    /// AgentOS instance
-    agent_os: Arc<AgentOs>,
+    /// Query engine for LLM interaction
+    query_engine: Arc<dyn QueryEngine>,
     /// Chat messages
     messages: Vec<ChatMessage>,
     /// Current reasoning content being built
@@ -64,8 +64,10 @@ pub struct TuiApp {
     should_exit: bool,
     /// Last tool call (for tracking completion)
     last_tool_call: Option<String>,
-    /// Buffer for incomplete UTF-8 sequences
-    utf8_buffer: Vec<u8>,
+    /// Buffer for incomplete UTF-8 sequences in reasoning stream
+    reasoning_utf8_buffer: Vec<u8>,
+    /// Buffer for incomplete UTF-8 sequences in text stream
+    text_utf8_buffer: Vec<u8>,
     /// Debug panel
     debug_panel: DebugPanel,
     /// Show debug panel
@@ -86,8 +88,7 @@ pub struct TuiApp {
 
 impl TuiApp {
     /// Create a new TUI application
-    pub fn new(agent_os: AgentOs) -> anyhow::Result<Self> {
-        let agent_os = Arc::new(agent_os);
+    pub fn new(query_engine: Arc<dyn QueryEngine>) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel::<TuiEvent>();
         let (log_tx, log_rx) = mpsc::unbounded_channel::<crate::logging::LogEntry>();
 
@@ -112,7 +113,7 @@ impl TuiApp {
         });
 
         Ok(Self {
-            agent_os,
+            query_engine,
             messages: Vec::new(),
             current_reasoning: String::new(),
             current_response: String::new(),
@@ -126,7 +127,8 @@ impl TuiApp {
             event_tx,
             should_exit: false,
             last_tool_call: None,
-            utf8_buffer: Vec::new(),
+            reasoning_utf8_buffer: Vec::new(),
+            text_utf8_buffer: Vec::new(),
             debug_panel: DebugPanel::new(1000),
             show_debug_panel: false,
             log_rx,
@@ -223,6 +225,9 @@ impl TuiApp {
                     self.input.set_mode(InputMode::Normal);
                     self.input.autocomplete = None;
                     self.input.autocomplete_trigger_pos = None;
+                } else if self.query_engine.is_busy() {
+                    // Cancel running query
+                    self.query_engine.cancel();
                 } else {
                     // Otherwise exit
                     self.should_exit = true;
@@ -535,7 +540,7 @@ impl TuiApp {
             TuiEvent::AgentToolCall { name, .. } => {
                 self.messages.push(ChatMessage::ToolCall {
                     name: name.clone(),
-                    status: ToolStatus::Running,
+                    status: ToolCallStatus::Running,
                 });
                 self.last_tool_call = Some(name.clone());
                 self.status.set_status(format!("Running tool: {}", name));
@@ -545,7 +550,7 @@ impl TuiApp {
                 for msg in self.messages.iter_mut().rev() {
                     if let ChatMessage::ToolCall { name: n, status } = msg {
                         if n == &name {
-                            *status = ToolStatus::Done;
+                            *status = ToolCallStatus::Done;
                             break;
                         }
                     }
@@ -603,17 +608,10 @@ impl TuiApp {
             TuiEvent::Tick => {
                 // Periodic updates
             }
-            TuiEvent::Input(_) => {
-                // Handled in key event handler
-            }
-            TuiEvent::Mouse(_) => {
-                // Mouse events are handled in the main loop, not via TuiEvent channel
-                // This variant is here for completeness but shouldn't be used
-            }
         }
     }
 
-    /// Send the current message to the agent
+    /// Send the current message to the agent via the QueryEngine
     fn send_message(&mut self) {
         let text = self.input.text().trim().to_string();
 
@@ -632,222 +630,60 @@ impl TuiApp {
         self.current_reasoning = String::new();
         self.current_response = String::new();
 
-        // Spawn agent task to process the message
-        let agent_os = self.agent_os.clone();
-        let event_tx = self.event_tx.clone();
-        let log_tx = self.log_tx.clone();
-        let message = text.clone();
+        // Build the request for the query engine
+        let request = crate::query::QueryRequest {
+            message: text,
+            log_tx: self.log_tx.clone(),
+            cancel_token: CancellationToken::new(),
+        };
 
-        let _ = log_tx.send(crate::logging::LogEntry {
-            level: log::Level::Info,
-            module: Some("app".to_string()),
-            message: format!("Starting agent task for message: {}", message),
-            timestamp: chrono::Local::now(),
-        });
+        // Create a bridge channel: QueryEvent → TuiEvent
+        let (query_event_tx, mut query_event_rx) = mpsc::unbounded_channel::<QueryEvent>();
+        let tui_event_tx = self.event_tx.clone();
 
+        // Spawn a bridge task to translate QueryEvent → TuiEvent
         tokio::spawn(async move {
-            use tirea::prelude::Message;
-            use tirea_contract::RunRequest;
-            use futures::StreamExt;
-            use tirea::contracts::AgentEvent;
-
-            let run_request = RunRequest {
-                agent_id: "coding-agent".to_string(),
-                thread_id: None,
-                run_id: None,
-                parent_run_id: None,
-                parent_thread_id: None,
-                resource_id: None,
-                origin: Default::default(),
-                state: None,
-                messages: vec![Message::user(message)],
-                initial_decisions: vec![],
-                source_mailbox_entry_id: None,
-            };
-
-            let _ = log_tx.send(crate::logging::LogEntry {
-                level: log::Level::Info,
-                module: Some("app".to_string()),
-                message: format!("Calling agent_os.run_stream() with agent_id: {}", run_request.agent_id),
-                timestamp: chrono::Local::now(),
-            });
-            let _ = log_tx.send(crate::logging::LogEntry {
-                level: log::Level::Debug,
-                module: Some("app".to_string()),
-                message: format!("Thread ID: {:?}", run_request.thread_id),
-                timestamp: chrono::Local::now(),
-            });
-
-            match agent_os.run_stream(run_request).await {
-                Ok(mut stream) => {
-                    let _ = log_tx.send(crate::logging::LogEntry {
-                        level: log::Level::Info,
-                        module: Some("app".to_string()),
-                        message: "Agent stream created successfully, waiting for events...".to_string(),
-                        timestamp: chrono::Local::now(),
-                    });
-
-                    let mut event_count = 0u32;
-
-                    while let Some(event) = stream.events.next().await {
-                        event_count += 1;
-                        let _ = log_tx.send(crate::logging::LogEntry {
-                            level: log::Level::Debug,
-                            module: Some("app".to_string()),
-                            message: format!("Event #{}: {:?}", event_count, std::mem::discriminant(&event)),
-                            timestamp: chrono::Local::now(),
-                        });
-
-                        match event {
-                            AgentEvent::TextDelta { delta, .. } => {
-                                let _ = log_tx.send(crate::logging::LogEntry {
-                                    level: log::Level::Debug,
-                                    module: Some("app".to_string()),
-                                    message: format!("TextDelta: {} chars", delta.len()),
-                                    timestamp: chrono::Local::now(),
-                                });
-                                let _ = event_tx.send(TuiEvent::AgentText(delta));
-                            }
-                            AgentEvent::ReasoningDelta { delta, .. } => {
-                                let _ = log_tx.send(crate::logging::LogEntry {
-                                    level: log::Level::Debug,
-                                    module: Some("app".to_string()),
-                                    message: format!("ReasoningDelta: {} chars", delta.len()),
-                                    timestamp: chrono::Local::now(),
-                                });
-                                let _ = event_tx.send(TuiEvent::AgentReasoning(delta));
-                            }
-                            AgentEvent::ToolCallStart { name, .. } => {
-                                let _ = log_tx.send(crate::logging::LogEntry {
-                                    level: log::Level::Info,
-                                    module: Some("app".to_string()),
-                                    message: format!("Tool call started: {}", name),
-                                    timestamp: chrono::Local::now(),
-                                });
-                                let _ = event_tx.send(TuiEvent::AgentToolCall {
-                                    name: name.clone(),
-                                    input: serde_json::json!({}),
-                                });
-                            }
-                            AgentEvent::ToolCallDone { .. } => {
-                                let _ = log_tx.send(crate::logging::LogEntry {
-                                    level: log::Level::Info,
-                                    module: Some("app".to_string()),
-                                    message: "Tool call completed".to_string(),
-                                    timestamp: chrono::Local::now(),
-                                });
-                                let _ = event_tx.send(TuiEvent::AgentToolDone {
-                                    name: "tool".to_string(),
-                                });
-                            }
-                            AgentEvent::Error { message, .. } => {
-                                let _ = log_tx.send(crate::logging::LogEntry {
-                                    level: log::Level::Error,
-                                    module: Some("app".to_string()),
-                                    message: format!("Agent error event: {}", message),
-                                    timestamp: chrono::Local::now(),
-                                });
-                                let _ = event_tx.send(TuiEvent::AgentError(message));
-                            }
-                            _ => {
-                                let _ = log_tx.send(crate::logging::LogEntry {
-                                    level: log::Level::Debug,
-                                    module: Some("app".to_string()),
-                                    message: format!("Other event type: {:?}", std::mem::discriminant(&event)),
-                                    timestamp: chrono::Local::now(),
-                                });
-                            }
-                        }
-                    }
-
-                    let _ = log_tx.send(crate::logging::LogEntry {
-                        level: log::Level::Info,
-                        module: Some("app".to_string()),
-                        message: format!("Agent stream ended. Total events received: {}", event_count),
-                        timestamp: chrono::Local::now(),
-                    });
-
-                    // Send response complete event
-                    let _ = event_tx.send(TuiEvent::AgentResponseComplete);
-                }
-                Err(e) => {
-                    let _ = log_tx.send(crate::logging::LogEntry {
-                        level: log::Level::Error,
-                        module: Some("app".to_string()),
-                        message: format!("Failed to create agent stream: {}", e),
-                        timestamp: chrono::Local::now(),
-                    });
-                    let _ = log_tx.send(crate::logging::LogEntry {
-                        level: log::Level::Error,
-                        module: Some("app".to_string()),
-                        message: format!("Error type: {:?}", std::error::Error::source(&e)),
-                        timestamp: chrono::Local::now(),
-                    });
-                    let _ = event_tx.send(TuiEvent::AgentError(e.to_string()));
-                }
+            while let Some(event) = query_event_rx.recv().await {
+                let tui_event = TuiEvent::from_query_event(event);
+                let _ = tui_event_tx.send(tui_event);
             }
-
-            let _ = log_tx.send(crate::logging::LogEntry {
-                level: log::Level::Info,
-                module: Some("app".to_string()),
-                message: "Agent task completed".to_string(),
-                timestamp: chrono::Local::now(),
-            });
         });
+
+        // Submit to the query engine
+        self.query_engine.submit(request, query_event_tx);
 
         self.status.set_streaming(true);
     }
 
     /// Append text delta with UTF-8 boundary handling
     fn append_text_delta(&mut self, delta: &str) {
-        // Extend the buffer with new bytes
-        self.utf8_buffer.extend_from_slice(delta.as_bytes());
-
-        // Try to convert the entire buffer to a string
-        match String::from_utf8(std::mem::take(&mut self.utf8_buffer)) {
-            Ok(text) => {
-                // All bytes are valid UTF-8
-                self.current_response.push_str(&text);
-                // Buffer is already empty due to mem::take
-            }
-            Err(err) => {
-                // Some bytes are invalid UTF-8
-                let valid_len = err.utf8_error().valid_up_to();
-                let bytes = err.into_bytes();
-                if valid_len > 0 {
-                    // Append the valid portion
-                    let valid_text = String::from_utf8_lossy(&bytes[..valid_len]);
-                    self.current_response.push_str(&valid_text);
-                }
-                // Keep the incomplete bytes in buffer
-                self.utf8_buffer = bytes[valid_len..].to_vec();
-            }
-        }
+        Self::append_delta(&mut self.current_response, &mut self.text_utf8_buffer, delta);
     }
 
     /// Append reasoning delta with UTF-8 boundary handling
     fn append_reasoning_delta(&mut self, delta: &str) {
-        // Extend the buffer with new bytes
-        self.utf8_buffer.extend_from_slice(delta.as_bytes());
+        Self::append_delta(&mut self.current_reasoning, &mut self.reasoning_utf8_buffer, delta);
+    }
 
-        // Try to convert the entire buffer to a string
-        match String::from_utf8(std::mem::take(&mut self.utf8_buffer)) {
+    /// Append a delta to a target string with UTF-8 boundary handling.
+    ///
+    /// Handles the case where a streaming chunk ends mid-UTF-8-sequence
+    /// by buffering the incomplete bytes for the next chunk.
+    fn append_delta(target: &mut String, buffer: &mut Vec<u8>, delta: &str) {
+        buffer.extend_from_slice(delta.as_bytes());
+
+        match String::from_utf8(std::mem::take(buffer)) {
             Ok(text) => {
-                // All bytes are valid UTF-8
-                self.current_reasoning.push_str(&text);
-                // Buffer is already empty due to mem::take
+                target.push_str(&text);
             }
             Err(err) => {
-                // Some bytes are invalid UTF-8
                 let valid_len = err.utf8_error().valid_up_to();
                 let bytes = err.into_bytes();
                 if valid_len > 0 {
-                    // Append the valid portion
                     let valid_text = String::from_utf8_lossy(&bytes[..valid_len]);
-                    self.current_reasoning.push_str(&valid_text);
+                    target.push_str(&valid_text);
                 }
-                // Keep the incomplete bytes in buffer
-                self.utf8_buffer = bytes[valid_len..].to_vec();
+                *buffer = bytes[valid_len..].to_vec();
             }
         }
     }
@@ -1045,9 +881,9 @@ impl TuiApp {
                 }
                 ChatMessage::ToolCall { name, status } => {
                     let status_icon = match status {
-                        ToolStatus::Running => "⏳",
-                        ToolStatus::Done => "✓",
-                        ToolStatus::Error(_) => "✗",
+                        ToolCallStatus::Running => "⏳",
+                        ToolCallStatus::Done => "✓",
+                        ToolCallStatus::Error(_) => "✗",
                     };
 
                     text.push_line(Line::from(vec![
@@ -1192,9 +1028,9 @@ impl TuiApp {
                 }
                 ChatMessage::ToolCall { name, status } => {
                     let icon = match status {
-                        ToolStatus::Running => "⏳",
-                        ToolStatus::Done => "✓",
-                        ToolStatus::Error(_) => "✗",
+                        ToolCallStatus::Running => "⏳",
+                        ToolCallStatus::Done => "✓",
+                        ToolCallStatus::Error(_) => "✗",
                     };
                     text.push_line(Line::from(Span::raw(format!("┌─ {} {}", icon, name))));
                 }

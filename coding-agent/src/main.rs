@@ -12,11 +12,14 @@ mod platform;
 mod context;
 mod ui;
 mod logging;
+mod query;
+mod permissions;
 
+use std::sync::Arc;
 use tools::build_tool_map;
-use tirea_agentos::AgentOs;
 use ui::TuiApp;
 use log::{info, debug};
+use query::{QueryEngine, TireaQueryEngine};
 
 
 /// Maximum number of inference rounds
@@ -51,14 +54,18 @@ async fn main() -> anyhow::Result<()> {
     }
 
     info!("AgentOS initialized successfully");
+
+    // Build QueryEngine wrapping the AgentOs
+    let query_engine: Arc<dyn QueryEngine> = Arc::new(TireaQueryEngine::new(agent_os));
+
     info!("Starting TUI Mode...");
 
     // Run TUI mode
-    run_tui_mode(agent_os).await
+    run_tui_mode(query_engine).await
 }
 
 /// Run the agent in TUI mode
-async fn run_tui_mode(agent_os: AgentOs) -> anyhow::Result<()> {
-    let mut app = TuiApp::new(agent_os)?;
+async fn run_tui_mode(query_engine: Arc<dyn QueryEngine>) -> anyhow::Result<()> {
+    let mut app = TuiApp::new(query_engine)?;
     app.run().await
 }

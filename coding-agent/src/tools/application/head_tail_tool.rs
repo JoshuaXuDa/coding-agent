@@ -196,6 +196,23 @@ impl Tool for HeadTailTool {
     }
 }
 
+// --- ToolProvider implementation ---
+pub struct HeadTailToolProvider;
+
+impl crate::tools::domain::provider::ToolProvider for HeadTailToolProvider {
+    fn tool_id(&self) -> &str { "head_tail" }
+
+    fn dependency_type(&self) -> crate::tools::domain::provider::DependencyType { crate::tools::domain::provider::DependencyType::FileSystem }
+
+    fn build(
+        &self,
+        fs: Option<Arc<dyn FileSystem>>,
+        _executor: Option<Arc<dyn crate::platform::domain::command::CommandExecutor>>,
+    ) -> Arc<dyn Tool> {
+        Arc::new(HeadTailTool::new(fs.unwrap()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

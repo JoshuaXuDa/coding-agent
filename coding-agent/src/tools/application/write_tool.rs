@@ -190,6 +190,23 @@ impl Tool for WriteTool {
     }
 }
 
+// --- ToolProvider implementation ---
+pub struct WriteToolProvider;
+
+impl crate::tools::domain::provider::ToolProvider for WriteToolProvider {
+    fn tool_id(&self) -> &str { "write" }
+
+    fn dependency_type(&self) -> crate::tools::domain::provider::DependencyType { crate::tools::domain::provider::DependencyType::FileSystem }
+
+    fn build(
+        &self,
+        fs: Option<Arc<dyn FileSystem>>,
+        _executor: Option<Arc<dyn crate::platform::domain::command::CommandExecutor>>,
+    ) -> Arc<dyn Tool> {
+        Arc::new(WriteTool::new(fs.unwrap()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

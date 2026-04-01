@@ -284,6 +284,23 @@ impl Tool for GrepTool {
     }
 }
 
+// --- ToolProvider implementation ---
+pub struct GrepToolProvider;
+
+impl crate::tools::domain::provider::ToolProvider for GrepToolProvider {
+    fn tool_id(&self) -> &str { "grep" }
+
+    fn dependency_type(&self) -> crate::tools::domain::provider::DependencyType { crate::tools::domain::provider::DependencyType::FileSystem }
+
+    fn build(
+        &self,
+        fs: Option<Arc<dyn FileSystem>>,
+        _executor: Option<Arc<dyn crate::platform::domain::command::CommandExecutor>>,
+    ) -> Arc<dyn Tool> {
+        Arc::new(GrepTool::new(fs.unwrap()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

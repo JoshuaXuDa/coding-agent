@@ -14,6 +14,7 @@ pub mod tool_metadata;
 pub mod registry;
 pub mod macros;
 pub mod doc_generator;
+pub mod provider;
 
 pub use validation::*;
 pub use json_builder::*;
@@ -26,3 +27,4 @@ pub use file_type::*;
 pub use tool_metadata::*;
 pub use registry::*;
 pub use doc_generator::*;
+pub use provider::*;

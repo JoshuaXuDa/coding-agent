@@ -3,8 +3,10 @@
 //! Executes multiple tool calls in parallel for improved performance.
 
 use anyhow::Result;
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::future::Future;
+use std::sync::Arc;
 use tirea::prelude::{Tool, ToolDescriptor, ToolError, ToolResult};
 use tirea_contract::ToolCallContext;
 use crate::tools::domain::json_builder::JsonBuilder;
@@ -19,12 +21,14 @@ const MAX_BATCH_SIZE: usize = 25;
 /// Batch tool
 ///
 /// Executes multiple tool calls in parallel.
-pub struct BatchTool;
+pub struct BatchTool {
+    tools: Arc<HashMap<String, Arc<dyn Tool>>>,
+}
 
 impl BatchTool {
-    /// Create a new batch tool
-    pub fn new() -> Self {
-        Self
+    /// Create a new batch tool with access to the tool registry
+    pub fn new(tools: Arc<HashMap<String, Arc<dyn Tool>>>) -> Self {
+        Self { tools }
     }
 
     /// Parse tool arguments
@@ -79,21 +83,8 @@ impl BatchTool {
             };
         }
 
-        // Get the global tool registry
-        let tools = match crate::tools::get_tool_registry() {
-            Some(t) => t,
-            None => {
-                return BatchResult {
-                    tool: call.tool.clone(),
-                    success: false,
-                    error: Some("Tool registry not initialized".to_string()),
-                    duration_ms: start_time.elapsed().as_millis() as u64,
-                };
-            }
-        };
-
         // Get the tool from registry
-        let tool = match tools.get(&call.tool) {
+        let tool = match self.tools.get(&call.tool) {
             Some(t) => t,
             None => {
                 return BatchResult {
@@ -140,12 +131,6 @@ struct BatchResult {
     success: bool,
     error: Option<String>,
     duration_ms: u64,
-}
-
-impl Default for BatchTool {
-    fn default() -> Self {
-        Self
-    }
 }
 
 impl Tool for BatchTool {
@@ -257,6 +242,32 @@ impl Tool for BatchTool {
             let result = JsonBuilder::build_success("batch", data);
             Ok(ToolResult::success("batch", result))
         })
+    }
+}
+
+// --- ToolProvider implementation ---
+// Note: BatchTool is built specially in build_tool_map() because it needs
+// a reference to the full tool registry. This provider is only used for
+// discovery/metadata purposes.
+
+pub struct BatchToolProvider;
+
+impl crate::tools::domain::provider::ToolProvider for BatchToolProvider {
+    fn tool_id(&self) -> &str { "batch" }
+
+    fn dependency_type(&self) -> crate::tools::domain::provider::DependencyType {
+        crate::tools::domain::provider::DependencyType::None
+    }
+
+    fn build(
+        &self,
+        _fs: Option<Arc<dyn crate::platform::domain::filesystem::FileSystem>>,
+        _executor: Option<Arc<dyn crate::platform::domain::command::CommandExecutor>>,
+    ) -> Arc<dyn Tool> {
+        // BatchTool requires the full tool registry, so it cannot be built
+        // via the standard provider pattern. It is constructed in
+        // build_tool_map() after all other tools are registered.
+        panic!("BatchTool must be built via build_tool_map(), not through ToolProvider")
     }
 }
 

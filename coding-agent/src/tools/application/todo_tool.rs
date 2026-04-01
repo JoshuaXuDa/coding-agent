@@ -182,6 +182,25 @@ impl Tool for TodoWriteTool {
     }
 }
 
+// --- ToolProvider implementation ---
+use std::sync::Arc;
+
+pub struct TodoWriteToolProvider;
+
+impl crate::tools::domain::provider::ToolProvider for TodoWriteToolProvider {
+    fn tool_id(&self) -> &str { "todowrite" }
+
+    fn dependency_type(&self) -> crate::tools::domain::provider::DependencyType { crate::tools::domain::provider::DependencyType::None }
+
+    fn build(
+        &self,
+        _fs: Option<Arc<dyn crate::platform::domain::filesystem::FileSystem>>,
+        _executor: Option<Arc<dyn crate::platform::domain::command::CommandExecutor>>,
+    ) -> Arc<dyn Tool> {
+        Arc::new(TodoWriteTool::new())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

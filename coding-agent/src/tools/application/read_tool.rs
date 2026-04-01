@@ -402,6 +402,23 @@ impl Tool for ReadTool {
     }
 }
 
+// --- ToolProvider implementation ---
+pub struct ReadToolProvider;
+
+impl crate::tools::domain::provider::ToolProvider for ReadToolProvider {
+    fn tool_id(&self) -> &str { "read" }
+
+    fn dependency_type(&self) -> crate::tools::domain::provider::DependencyType { crate::tools::domain::provider::DependencyType::FileSystem }
+
+    fn build(
+        &self,
+        fs: Option<Arc<dyn FileSystem>>,
+        _executor: Option<Arc<dyn crate::platform::domain::command::CommandExecutor>>,
+    ) -> Arc<dyn Tool> {
+        Arc::new(ReadTool::new(fs.unwrap()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

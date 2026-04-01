@@ -98,6 +98,23 @@ impl Tool for StatTool {
     }
 }
 
+// --- ToolProvider implementation ---
+pub struct StatToolProvider;
+
+impl crate::tools::domain::provider::ToolProvider for StatToolProvider {
+    fn tool_id(&self) -> &str { "stat" }
+
+    fn dependency_type(&self) -> crate::tools::domain::provider::DependencyType { crate::tools::domain::provider::DependencyType::FileSystem }
+
+    fn build(
+        &self,
+        fs: Option<Arc<dyn FileSystem>>,
+        _executor: Option<Arc<dyn crate::platform::domain::command::CommandExecutor>>,
+    ) -> Arc<dyn Tool> {
+        Arc::new(StatTool::new(fs.unwrap()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
